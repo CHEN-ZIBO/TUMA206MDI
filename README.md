@@ -231,7 +231,7 @@ Three-page Streamlit HMI with shared engine singleton (`dashboard/shared.py` —
 
 | Page | Components |
 |------|-----------|
-| **SCHEMATIC** | SVG industrial P&ID (7 animated equipment nodes: 2 pumps, tank, pasteurizer, cooler, filler ×4, conveyor). Stage detail cards (S1–S5). KPI summary (6 metrics). Manual override panel (per-actuator checkbox + slider). Fault injection panel. START/STOP buttons. Refresh rate control. |
+| **SCHEMATIC** | SVG industrial P&ID (7 animated equipment nodes: 2 pumps, tank, pasteurizer, cooler, filler ×4, conveyor). Stage detail cards (S1–S5). KPI summary (6 metrics). Manual override panel (per-actuator checkbox + slider). Fault injection panel. START / STOP / **HARD RESET** buttons (full factory reset — clears all state, history, caches). Refresh rate control. |
 | **TRENDS** | 2×2 sensor chart grid (Pasteur Temp with safe-band lines, Tank Level, Flow Rate, Bottles Capped). Actuator charts (Heater Power, Cooler Temp & Valve dual-axis). Per-chart FREEZE/UNFREEZE (snapshots dataframe; chart always rendered, Plotly `uirevision="constant"` preserves zoom). CSV export. IDLE rows filtered from all plots. |
 | **ALARMS** | Status row (PLC, Alarm, Fault). Auto-diagnosis panel on active alarm (confidence + engine + recommendation). **"Force Analysis"** button — triggers fresh diagnosis when alarm active, or **system health check** when idle. **AI consultation chat** with 4 context-aware quick-action buttons (Diagnose Alarm, Analyze State, Recovery Steps, Risk Check) — clean display labels, full context sent to AI. Free-form input **outside auto-refresh fragment** (no mid-type resets). Alarm event log with distribution. In-UI API key (hot-swap). |
 
@@ -425,7 +425,7 @@ All four injected faults have dedicated rule-based advice that triggers in <1ms 
 - **Nozzle status row**: 4 coloured dots (grey=IDLE, blue=FILLING, green=FULL) + fill phase + ASCII progress bar + percentage.
 - **5 Stage detail cards**: S1 (Level, Inlet Valve, Feed Pump, Flow), S2 (Temp, Heater, Safe Band, Status), S3 (Temp, Cooler, Target, Limit), S4 (Flow Rate, Fill Valve, Phase, Progress), S5 (On Belt, Completed, Conveyor, Buffer Target).
 - **6 KPI cards**: Level, Pasteur Temp, Cooler Temp, Flow Rate, Completed Bottles, PLC State + Tick.
-- **Sidebar controls**: START/STOP, per-actuator manual override (checkbox → slider starts at current AUTO value → uncheck returns to AUTO with gradient recovery and debounce reset), fault injection (type selector → INJECT → RESET), refresh rate slider (1–10s).
+- **Sidebar controls**: START / STOP / **HARD RESET** (full factory reset: stops engine, resets plant + PLC to initial state, clears all manual overrides, historian data, alarm logs, AI cache, chat history, and Trends freeze — returns the entire system to a clean slate), per-actuator manual override (checkbox → slider starts at current AUTO value → uncheck returns to AUTO with gradient recovery and debounce reset), fault injection (type selector → INJECT → RESET), refresh rate slider (1–10s).
 
 ### Page 1 — TRENDS
 
