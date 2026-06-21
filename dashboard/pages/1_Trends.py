@@ -10,7 +10,7 @@ import streamlit as st
 from plotly.subplots import make_subplots
 
 import config
-from engine import SimulationEngine
+from shared import get_engine
 
 BG = "#0d1117"
 CARD_BG = "#161b22"
@@ -36,11 +36,6 @@ st.markdown(f"""<style>
     .section-label {{ font-size:0.65rem; font-weight:600; text-transform:uppercase; letter-spacing:0.1em; color:{TEXT_DIM}; margin:14px 0 8px 0; padding-bottom:6px; border-bottom:1px solid {BORDER}; }}
 </style>""", unsafe_allow_html=True)
 
-@st.cache_resource
-def get_engine() -> SimulationEngine:
-    e = SimulationEngine(use_mqtt=os.environ.get("USE_MQTT", "0") == "1")
-    e.start()
-    return e
 engine = get_engine()
 
 DEFAULTS = {"refresh_s": 3, "window_s": config.HISTORY_WINDOW_S,

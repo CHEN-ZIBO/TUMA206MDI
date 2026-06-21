@@ -32,6 +32,17 @@ SYSTEM_PROMPT = (
     "with a one-line 'Diagnosis:' label."
 )
 
+CONSULT_SYSTEM_PROMPT = (
+    "You are an expert operator-support assistant for a beverage pasteurization "
+    "and bottling line digital twin. The line has 5 stages: S1 Raw Tank (level "
+    "control), S2 Pasteurizer (72°C target, 68-78°C safe band), S3 Cooler "
+    "(20°C target), S4 Inline Filler (4-nozzle monoblock, 500mL bottles), S5 "
+    "Capper/Conveyor (accumulation buffer, P-controlled speed). "
+    "You receive live sensor tags and recent history. Answer the operator's "
+    "question concisely (under 150 words). Be specific about values and actions. "
+    "Never command actuators directly — only advise the human operator."
+)
+
 # Deterministic fallback advice keyed on alarm code.
 _RULE_ADVICE: Dict[int, Dict[str, str]] = {
     config.ALARM_NONE: {
@@ -114,6 +125,47 @@ class AIAssistant:
     @property
     def using_claude(self) -> bool:
         return self._client is not None
+
+    # ------------------------------------------------------------------
+    def consult(self, question: str, latest_tags: Dict,
+                recent_history: List[Dict]) -> str:
+        """Free-form operator question. Returns plain-text answer string."""
+        if self._client is not None:
+            try:
+                return self._consult_with_claude(question, latest_tags, recent_history)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[AIAssistant] Claude consult failed ({exc}); falling back.")
+        return self._consult_with_rules(question, latest_tags)
+
+    def _consult_with_rules(self, question: str, latest_tags: Dict) -> str:
+        alarm_code = int(latest_tags.get("alarm_code", 0))
+        advice = _RULE_ADVICE.get(alarm_code, _RULE_ADVICE[config.ALARM_NONE])
+        return (
+            f"[Rule-based fallback — no API key configured]\n\n"
+            f"Current alarm: {config.ALARM_LABELS.get(alarm_code, 'None')}\n"
+            f"{advice['text']}\n\n"
+            f"For Claude-powered answers, enter your Anthropic API key in the sidebar."
+        )
+
+    def _consult_with_claude(self, question: str, latest_tags: Dict,
+                              recent_history: List[Dict]) -> str:
+        alarm_code = int(latest_tags.get("alarm_code", 0))
+        alarm_label = config.ALARM_LABELS.get(alarm_code, "None")
+        trend = _summarize_history(recent_history)
+        user_msg = (
+            f"Operator question: {question}\n\n"
+            f"Active alarm: {alarm_label} (code {alarm_code})\n"
+            f"Latest tags:\n{_format_tags(latest_tags)}\n\n"
+            f"Recent trend:\n{trend}"
+        )
+        response = self._client.messages.create(
+            model=config.ANTHROPIC_MODEL,
+            max_tokens=config.ANTHROPIC_MAX_TOKENS,
+            system=CONSULT_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        return "".join(block.text for block in response.content
+                       if getattr(block, "type", "") == "text").strip()
 
     # ------------------------------------------------------------------
     def diagnose(self, latest_tags: Dict, alarm_code: int,

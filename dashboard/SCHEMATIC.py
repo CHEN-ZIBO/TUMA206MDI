@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import streamlit as st
 
 import config
-from engine import SimulationEngine
+from shared import get_engine
 
 # Theme: Industrial Dark
 BG = "#0d1117"
@@ -180,11 +180,6 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # Engine
-@st.cache_resource
-def get_engine():
-    e = SimulationEngine(use_mqtt=os.environ.get("USE_MQTT", "0") == "1")
-    e.start()
-    return e
 engine = get_engine()
 
 # Session
