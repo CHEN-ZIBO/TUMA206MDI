@@ -8,6 +8,7 @@ import streamlit as st
 
 import config
 from shared import get_engine
+from svg_pid import build_pid_svg
 
 # Theme: Industrial Dark
 BG = "#0d1117"
@@ -402,36 +403,14 @@ def live_view():
     s4_ok = fc and bp
     s5_ok = cvc > 0
 
-    # ── Process Flow ──
+    # ── Process Flow (SVG P&ID) ──
     st.markdown('<div class="section-label">Process Flow</div>', unsafe_allow_html=True)
-    cols = st.columns([1.2, 0.2, 1.5, 0.2, 1.2, 0.2, 1.2, 0.2, 1.2, 0.2, 1.2, 0.2, 1.4])
-    items = [
-        ("INLET<br>PUMP", f"{ic:.0f}%", f"{'OPEN' if ic>0 else 'SHUT'}", "active" if ic>0 else "idle", 'inlet_valve_cmd' in man),
-        ("pipe",),
-        ("RAW<br>TANK", f"{level:.1f}%", f"Target {config.TANK_LEVEL_TARGET:.0f}%", "active" if s1_ok else ("warn" if config.TANK_LEVEL_MIN_PUMP < level < config.TANK_LEVEL_HIGH else "fault"), 'inlet_valve_cmd' in man or 'pump_cmd' in man),
-        ("pipe",),
-        ("FEED<br>PUMP", f"{flow:.1f} L/m", f"{'OK' if pf else 'OFF'}", "active" if flow_ok else ("fault" if fcode==config.FAULT_PUMP_FAIL else "idle"), 'pump_cmd' in man),
-        ("pipe",),
-        ("PASTEURIZER", f"{temp:.1f}°C", f"Heater {hc:.0f}%", "active" if s2_ok else ("warn" if temp<config.PASTEUR_SAFE_MIN and temp>30 else "fault"), 'heater_power_cmd' in man),
-        ("pipe",),
-        ("COOLER", f"{cool:.1f}°C", f"Cool {cc:.0f}%", "active" if s3_ok else "warn", 'cooling_valve_cmd' in man),
-        ("pipe",),
-        ("FILLER", f"x4 nozzles", f"{'FILLING' if s4_ok else 'IDLE'} | {sum(1 for n in latest.get('nozzle_status',[0]*4) if n>0)}/4 active", "active" if s4_ok else ("warn" if bp else "idle"), False),
-        ("pipe",),
-        ("CAPPER", f"Done: {latest.get('bottles_completed',0)}", f"Belt: {belt}/{belt_max} | {'MOVING' if s5_ok else 'STOPPED'}", "active" if s5_ok else "idle", 'conveyor_cmd' in man),
-    ]
+    # Inject _manuals key so svg_pid can draw manual badges
+    latest["_manuals"] = list(engine.manual_overrides or {})
+    svg_html = build_pid_svg(latest)
+    st.markdown(svg_html, unsafe_allow_html=True)
 
-    for col, item in zip(cols, items):
-        if item[0] == "pipe":
-            col.markdown(pipe("active" if flow_ok else "idle"), unsafe_allow_html=True)
-        else:
-            name, val, sub, cls, m = item
-            if "TANK" in name:
-                col.markdown(eq_tank(name, val, level, sub, cls, m), unsafe_allow_html=True)
-            else:
-                col.markdown(eq_card(name, val, sub, cls, m), unsafe_allow_html=True)
-
-    # ── Filler Nozzle Status + Fill Progress ──
+    # ── Filler Nozzle Status ──
     nozzle_status = latest.get("nozzle_status", [0]*4)
     fill_phase = latest.get("fill_phase", "INDEX")
     fill_prog = float(latest.get("fill_progress", 0.0))
