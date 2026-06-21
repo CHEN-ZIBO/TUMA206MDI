@@ -58,11 +58,13 @@ CONVEYOR_MAX_BOTTLES = 60      # buffer capacity (bottles on the belt)
 CONVEYOR_TARGET_BUFFER = 12    # AUTO conveyor holds the buffer near this level
 CONVEYOR_BOTTLES_PER_TICK_AT_100 = 1.5  # discharge throughput at 100% belt speed
 
-COOLER_SETPOINT = 20.0         # degC target product temperature after cooling
-COOLER_OPEN_ABOVE = 25.0       # degC open cooling valve above this
-COOLER_MAX_BOTTLING = 25.0     # degC — do NOT bottle when cooler_temp exceeds this
+COOLER_SETPOINT = 25.0         # degC target product temperature after cooling (PI setpoint)
+COOLER_FLOOR = 15.0            # degC coldest achievable at 100% cooling valve
+COOLER_OPEN_ABOVE = 30.0       # degC reference threshold for cooling valve
+COOLER_MAX_BOTTLING = 28.0     # degC — do NOT bottle when cooler_temp exceeds this
+COOLER_ALARM_HIGH = 32.0       # degC — COOLER_HIGH alarm above this
 
-AMBIENT_TEMP = 25.0            # degC ambient temperature
+AMBIENT_TEMP = 25.0            # degC ambient temperature (also natural cooler idle temp)
 
 # Number of consecutive abnormal ticks before the PLC latches an alarm.
 ALARM_DEBOUNCE_TICKS = 3
@@ -94,6 +96,8 @@ ALARM_TEMP_OUT_OF_RANGE = 30
 ALARM_DATA_STALE = 40
 ALARM_TANK_OVERFLOW = 50
 ALARM_TANK_EMPTY = 51
+ALARM_BUFFER_HIGH = 52
+ALARM_COOLER_HIGH = 53
 
 ALARM_LABELS = {
     ALARM_NONE: "No alarm",
@@ -103,6 +107,8 @@ ALARM_LABELS = {
     ALARM_DATA_STALE: "DATA_STALE",
     ALARM_TANK_OVERFLOW: "TANK_OVERFLOW",
     ALARM_TANK_EMPTY: "TANK_EMPTY",
+    ALARM_BUFFER_HIGH: "BUFFER_HIGH",
+    ALARM_COOLER_HIGH: "COOLER_HIGH",
 }
 
 # Human readable, operator-facing alarm descriptions (used by M4 and as a hint to M5).
@@ -133,6 +139,17 @@ ALARM_DESCRIPTIONS = {
         f"Raw tank level has dropped below {TANK_CRITICAL_LOW:.0f}%. Risk of "
         "dry-running the feed pump and pasteurizer. Inlet valve should be opened "
         "and feed pump stopped."
+    ),
+    ALARM_BUFFER_HIGH: (
+        f"Conveyor buffer is approaching capacity ({CONVEYOR_MAX_BOTTLES} bottles). "
+        "Filler back-pressure is active; increase conveyor speed or reduce pump "
+        "speed to clear the accumulation buffer before it overflows."
+    ),
+    ALARM_COOLER_HIGH: (
+        f"Cooler outlet temperature has exceeded {COOLER_ALARM_HIGH:.0f}°C. "
+        "Product is too hot for safe bottling. Increase cooling valve opening "
+        "or reduce feed pump speed to lower the thermal load on the cooler. "
+        "Check glycol supply and heat exchanger for fouling."
     ),
 }
 

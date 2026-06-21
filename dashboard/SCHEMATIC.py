@@ -259,7 +259,7 @@ def kpi_card(label, value, unit, color, sub=""):
 with st.sidebar:
     st.markdown(f"""
     <div style="text-align:center;padding:8px 0;">
-        <div style="font-size:1rem;font-weight:700;color:{TEXT};letter-spacing:0.06em;">CONTROL</div>
+        <div style="font-size:1rem;font-weight:700;color:{TEXT};letter-spacing:0.06em;">SCHEMATIC</div>
         <div style="font-size:0.52rem;color:{ACCENT};letter-spacing:0.1em;">LINE SUPERVISOR</div>
     </div>""", unsafe_allow_html=True)
     st.divider()
@@ -280,12 +280,12 @@ with st.sidebar:
 
     live = engine.latest()  # snapshot current engine state for slider init
 
-    man_inlet = st.checkbox("Inlet Valve", key="cb_inlet")
+    man_inlet = st.checkbox("Inlet Pump", key="cb_inlet")
     if man_inlet:
         if not st.session_state.get("_init_inlet", False):
             st.session_state["val_inlet_valve_cmd"] = float(live.get("inlet_valve_cmd", 50))
             st.session_state["_init_inlet"] = True
-        v = st.slider("Open %", 0, 100, int(st.session_state.get("val_inlet_valve_cmd", 50)), key="sl_inlet", label_visibility="collapsed")
+        v = st.slider("Inlet %", 0, 100, int(st.session_state.get("val_inlet_valve_cmd", 50)), key="sl_inlet", label_visibility="collapsed")
         apply_manual("inlet_valve_cmd", True, float(v))
     else:
         st.session_state["_init_inlet"] = False
@@ -313,12 +313,12 @@ with st.sidebar:
         st.session_state["_init_heater"] = False
         apply_manual("heater_power_cmd", False, 0.0)
 
-    man_cool = st.checkbox("Cooling Valve", key="cb_cool")
+    man_cool = st.checkbox("Cooler", key="cb_cool")
     if man_cool:
         if not st.session_state.get("_init_cool", False):
             st.session_state["val_cooling_valve_cmd"] = float(live.get("cooling_valve_cmd", 30))
             st.session_state["_init_cool"] = True
-        v = st.slider("Open %", 0, 100, int(st.session_state.get("val_cooling_valve_cmd", 30)), key="sl_cool", label_visibility="collapsed")
+        v = st.slider("Cooler %", 0, 100, int(st.session_state.get("val_cooling_valve_cmd", 30)), key="sl_cool", label_visibility="collapsed")
         apply_manual("cooling_valve_cmd", True, float(v))
     else:
         st.session_state["_init_cool"] = False
@@ -367,11 +367,16 @@ def live_view():
     plc_state = latest.get("plc_state", config.PLC_IDLE)
     frozen = alarm_code == config.ALARM_DATA_STALE
 
+    sp = int(latest.get("startup_phase", 2))
     if frozen:
         st.markdown(f'<div class="banner-frozen">DATA LINK FROZEN &mdash; PLC: {plc_state}</div>', unsafe_allow_html=True)
     elif alarm_code:
         st.markdown(f'<div class="banner-alarm">ALARM [{config.ALARM_LABELS.get(alarm_code)}] &mdash; '
                     f'{config.ALARM_DESCRIPTIONS.get(alarm_code)}</div>', unsafe_allow_html=True)
+    elif plc_state == "STARTING" and sp == 0:
+        st.markdown(f'<div class="banner-ok">WARMING UP &mdash; Heating pasteurizer &amp; cooler, filling tank…</div>', unsafe_allow_html=True)
+    elif plc_state == "STARTING" and sp == 1:
+        st.markdown(f'<div class="banner-ok">PRIMING PUMP &mdash; Establishing flow, stabilizing temperature…</div>', unsafe_allow_html=True)
     else:
         n_man = len(engine.manual_overrides)
         st.markdown(f'<div class="banner-ok">NORMAL &mdash; PLC: {plc_state}'
@@ -449,7 +454,7 @@ def live_view():
          f"Setpoint {config.PASTEUR_SETPOINT:.0f}°C &middot; PI control"),
         ("S3", "COOLER", "READY" if s3_ok else "COOLING",
          CYAN if s3_ok else ORANGE,
-         [("Temp", f"{cool:.1f} °C"), ("Valve", f"{cc:.0f}%"),
+         [("Temp", f"{cool:.1f} °C"), ("Cooler", f"{cc:.0f}%"),
           ("Target", f"{config.COOLER_SETPOINT:.0f}°C"), ("Limit", f"{config.COOLER_MAX_BOTTLING:.0f}°C")],
          f"PI control &middot; Opens >{config.COOLER_OPEN_ABOVE:.0f}°C"),
         ("S4", "FILLER", "FILLING" if s4_ok else ("WAITING" if bp else "IDLE"),

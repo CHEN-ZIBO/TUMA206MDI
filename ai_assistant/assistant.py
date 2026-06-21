@@ -93,6 +93,22 @@ _RULE_ADVICE: Dict[int, Dict[str, str]] = {
                 "immediately, open the inlet valve fully, and verify raw "
                 "beverage supply availability before restarting.",
     },
+    config.ALARM_BUFFER_HIGH: {
+        "label": "Conveyor buffer critically high",
+        "text": f"Conveyor buffer is at {config.CONVEYOR_MAX_BOTTLES * 0.9:.0f}+ bottles "
+                "(near capacity). The filler is back-pressuring. Increase "
+                "conveyor speed to clear the buffer. If the belt is already at "
+                "max, reduce feed pump speed to slow fill rate. Check the "
+                "capper for jams.",
+    },
+    config.ALARM_COOLER_HIGH: {
+        "label": "Cooler outlet temperature high",
+        "text": f"Cooler outlet temperature has exceeded {config.COOLER_ALARM_HIGH:.0f}°C. "
+                "Product is too hot for safe bottling. Increase cooling valve "
+                "opening to at least 20-30%. If the valve is already high, "
+                "reduce feed pump speed to lower the thermal load. Check glycol "
+                "supply temperature and heat exchanger for fouling or blockage.",
+    },
 }
 
 

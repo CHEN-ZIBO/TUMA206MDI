@@ -32,7 +32,7 @@ class PlantSimulator:
     """Physical plant model. Call :meth:`step` once per update period."""
 
     # --- internal physical state (sensor values) ---
-    tank_level: float = 50.0       # %
+    tank_level: float = 0.0        # % — starts empty, fills on START
     pasteur_temp: float = config.AMBIENT_TEMP  # degC
     cooler_temp: float = config.AMBIENT_TEMP   # degC
     flow_rate: float = 0.0         # L/min
@@ -62,7 +62,7 @@ class PlantSimulator:
 
     def reset(self) -> None:
         """Reset the plant to a clean starting state."""
-        self.tank_level = 50.0
+        self.tank_level = 0.0
         self.pasteur_temp = config.AMBIENT_TEMP
         self.cooler_temp = config.AMBIENT_TEMP
         self.flow_rate = 0.0
@@ -131,10 +131,25 @@ class PlantSimulator:
         # 3. Pasteurizer temperature (S2) --------------------------------
         self._update_pasteur_temp(heater_power_cmd)
 
-        # 4. Cooler (S3) — rate-scaling model (physically correct for HX):
-        # more cooling flow = faster approach to COOLER_SETPOINT (20 degC).
-        cooling_rate = 0.08 * max(cooling_valve_cmd / 100.0, 0.0)
-        self.cooler_temp += cooling_rate * (config.COOLER_SETPOINT - self.cooler_temp)
+        # 4. Cooler (S3) — HX with pipe transit + active glycol cooling.
+        #   (a) Inlet heating: hot product from pasteurizer, pipe walls shed
+        #       ~40-50% of ΔT. Faster flow = less pipe time = hotter inlet.
+        #       Typical inlet 50-55°C (from 72°C pasteurizer).
+        #   (b) Active cooling: glycol HX drives temp toward COOLER_FLOOR (15°C).
+        # Valve authority (steady-state, flow≈28 L/min, pipe≈53°C):
+        #   0%  → 53°C (no cooling, approaches inlet temp)
+        #   10% → ~40°C (COOLER_HIGH alarm at 32°C)
+        #   30% → ~30°C (near bottling limit)
+        #   50% → ~25°C (normal AUTO operating point — PI setpoint)
+        #   80% → ~22°C (cold)
+        #   100%→ ~21°C (maximum cooling toward 15°C floor)
+        if self.flow_rate > 0.5:
+            flow_factor = self.flow_rate / 40.0
+            pipe_frac = 0.50 * (1.0 - 0.3 * flow_factor)
+            pipe_temp = self.pasteur_temp - pipe_frac * (self.pasteur_temp - config.AMBIENT_TEMP)
+            self.cooler_temp += 0.08 * flow_factor * (pipe_temp - self.cooler_temp)
+        cooling_rate = 0.30 * max(cooling_valve_cmd / 100.0, 0.0)
+        self.cooler_temp += cooling_rate * (config.COOLER_FLOOR - self.cooler_temp)
         self.cooler_temp += random.uniform(-0.10, 0.10)
 
         # 5. Filler & 6. Capper / Conveyor (S4 / S5) ---------------------
@@ -144,24 +159,29 @@ class PlantSimulator:
 
     # ------------------------------------------------------------------
     def _update_pasteur_temp(self, heater_power_cmd: float) -> None:
-        """First-order thermal model with fault behaviour."""
+        """First-order thermal model with flow-through cooling and faults."""
         if self.fault_status == config.FAULT_TEMP_STUCK:
-            # Sensor frozen: reported temperature never moves.
             self.pasteur_temp = self._frozen_temp
             return
 
         if self.fault_status == config.FAULT_TEMP_EXCURSION:
-            # Heater "runs away": temperature drifts above the safe band
-            # regardless of the command, simulating a stuck heating element.
-            target = config.PASTEUR_SAFE_MAX + 8.0
+            target = config.PASTEUR_SAFE_MAX + 20.0  # 98 degC — must overcome flow-through cooling
         else:
-            # Normal: heater_power_cmd (0-100 %) drives the achievable temp.
-            target = config.AMBIENT_TEMP + (heater_power_cmd / 100.0) * 60.0
+            # Heater power 0-100% → achievable target 25-90°C (ΔT = 65°C span).
+            target = config.AMBIENT_TEMP + (heater_power_cmd / 100.0) * 65.0
 
-        # Industrial thermal inertia: large volumes heat/cool slowly.
-        # Time constant ~0.05 means ~40 ticks to 90% of target (~realistic).
+        # First-order heating toward target (industrial thermal inertia, τ≈0.05)
         self.pasteur_temp += 0.05 * (target - self.pasteur_temp)
-        self.pasteur_temp += random.uniform(-0.02, 0.02)
+
+        # Flow-through cooling: cold beverage (~25°C) enters the pasteurizer
+        # continuously, absorbing heat from the heated product. More flow = more
+        # cold mass entering = more cooling load on the heater. This is the
+        # dominant thermal disturbance in real pasteurizers.
+        if self.flow_rate > 0.5:
+            flow_factor = self.flow_rate / 40.0  # normalised 0..1
+            self.pasteur_temp -= 0.012 * flow_factor * (self.pasteur_temp - config.AMBIENT_TEMP)
+
+        self.pasteur_temp += random.uniform(-0.04, 0.04)
 
     def _update_bottling(self, conveyor_cmd: float, fill_valve_cmd: int,
                          capper_cmd: int) -> None:
@@ -202,8 +222,10 @@ class PlantSimulator:
         if self._fill_phase == "INDEX":
             self.bottle_present = 0
             self._index_timer += 1
-            # Hold in INDEX until transfer dead-time elapses, then admit a carrier
-            if self._index_timer >= config.FILL_GAP_TICKS:
+            # Dynamic gap: faster flow → shorter INDEX dead-time → faster cadence.
+            # Flow 30+ → gap=1, 10-20 → gap=1, 5-10 → gap=2, <5 → gap=3.
+            dyn_gap = max(1, min(3, int(12.0 / max(self.flow_rate, 2.0))))
+            if self._index_timer >= dyn_gap:
                 self._index_timer = 0
                 self._fill_phase = "FILL"
                 self._fill_progress = 0.0
