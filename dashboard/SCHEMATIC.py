@@ -275,6 +275,20 @@ with st.sidebar:
         for a in ACTUATORS:
             st.session_state[f"man_{a}"] = False; engine.clear_manual_actuator(a)
         st.toast("Line stopped", icon=":material/stop:")
+    if st.button("HARD RESET", use_container_width=True, type="secondary"):
+        engine.hard_reset()
+        for a in ACTUATORS:
+            st.session_state[f"man_{a}"] = False
+            st.session_state[f"val_{a}"] = 0 if a == "heater_power_cmd" else 0
+        for k in ["_init_inlet", "_init_pump", "_init_heater", "_init_cool", "_init_conv"]:
+            st.session_state.pop(k, None)
+        st.session_state["ai_cache"] = {}
+        st.session_state["chat_history"] = []
+        st.session_state["freeze_sensors"] = False
+        st.session_state["freeze_actuators"] = False
+        st.session_state["frozen_sensor_df"] = None
+        st.session_state["frozen_actuator_df"] = None
+        st.toast("System fully reset", icon=":material/restart_alt:")
     st.divider()
     st.markdown('<div class="sidebar-section">Manual Override</div>', unsafe_allow_html=True)
 

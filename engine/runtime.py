@@ -200,6 +200,26 @@ class SimulationEngine:
         if self._thread is not None:
             self._thread.join(timeout=2.0)
 
+    def hard_reset(self) -> None:
+        """Full factory reset — clears all state, history, and restarts the engine."""
+        was_running = self._running
+        if was_running:
+            self.stop()
+        with self._lock:
+            self.plant.reset()
+            self.plc.reset()
+            self._operator_start = 0
+            self._operator_stop = 0
+            self._fault_inject_code = config.FAULT_NONE
+            self._reset_fault = 0
+            self._simulate_stale = False
+            self._manual_overrides.clear()
+            self._latest = {}
+            self._tick = 0
+        self.historian.clear()
+        if was_running:
+            self.start()
+
     # ------------------------------------------------------------------
     def latest(self) -> Dict:
         with self._lock:
