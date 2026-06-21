@@ -35,12 +35,13 @@ SYSTEM_PROMPT = (
 CONSULT_SYSTEM_PROMPT = (
     "You are an expert operator-support assistant for a beverage pasteurization "
     "and bottling line digital twin. The line has 5 stages: S1 Raw Tank (level "
-    "control), S2 Pasteurizer (72°C target, 68-78°C safe band), S3 Cooler "
-    "(20°C target), S4 Inline Filler (4-nozzle monoblock, 500mL bottles), S5 "
-    "Capper/Conveyor (accumulation buffer, P-controlled speed). "
+    "control, target 55%, range 30-80%), S2 Pasteurizer (72°C target, 68-78°C "
+    "safe band), S3 Cooler (25°C target, glycol HX, alarm above 32°C), "
+    "S4 Inline Filler (4-nozzle monoblock, 500mL bottles), S5 Capper/Conveyor "
+    "(accumulation buffer 0-60 bottles, P-controlled belt speed). "
     "You receive live sensor tags and recent history. Answer the operator's "
-    "question concisely (under 150 words). Be specific about values and actions. "
-    "Never command actuators directly — only advise the human operator."
+    "question concisely (under 150 words). Be specific about current values and "
+    "recommended actions. Never command actuators — only advise the human operator."
 )
 
 # Deterministic fallback advice keyed on alarm code.
@@ -154,14 +155,44 @@ class AIAssistant:
         return self._consult_with_rules(question, latest_tags)
 
     def _consult_with_rules(self, question: str, latest_tags: Dict) -> str:
+        """Rule-based free-form answers using sensor data + alarm knowledge."""
         alarm_code = int(latest_tags.get("alarm_code", 0))
-        advice = _RULE_ADVICE.get(alarm_code, _RULE_ADVICE[config.ALARM_NONE])
-        return (
-            f"[Rule-based fallback — no API key configured]\n\n"
-            f"Current alarm: {config.ALARM_LABELS.get(alarm_code, 'None')}\n"
-            f"{advice['text']}\n\n"
-            f"For Claude-powered answers, enter your Anthropic API key in the sidebar."
-        )
+        temp = float(latest_tags.get("pasteur_temp", 0))
+        level = float(latest_tags.get("tank_level", 0))
+        flow = float(latest_tags.get("flow_rate", 0))
+        cooler = float(latest_tags.get("cooler_temp", 0))
+        plc = latest_tags.get("plc_state", "IDLE")
+        buffer = int(latest_tags.get("conveyor_queue", 0))
+        completed = int(latest_tags.get("bottles_completed", 0))
+
+        # Build a context-aware response from the available data
+        lines = ["[Rule-based analysis — no API key configured]\n"]
+        lines.append(f"**Current State:** PLC={plc}, Alarm={config.ALARM_LABELS.get(alarm_code, 'None')}")
+        lines.append(f"**Sensors:** Pasteurizer={temp:.1f}°C (band 68-78), Cooler={cooler:.1f}°C (limit 28), Tank={level:.0f}% (target 55), Flow={flow:.1f} L/min, Buffer={buffer}/60")
+
+        # Quick assessment
+        issues = []
+        if alarm_code:
+            advice = _RULE_ADVICE.get(alarm_code, _RULE_ADVICE[config.ALARM_NONE])
+            lines.append(f"\n**Active Alarm — {advice['label']}:** {advice['text']}")
+        else:
+            if not (config.PASTEUR_SAFE_MIN <= temp <= config.PASTEUR_SAFE_MAX):
+                issues.append(f"Pasteurizer temp {temp:.1f}°C outside 68-78°C band")
+            if cooler > config.COOLER_MAX_BOTTLING:
+                issues.append(f"Cooler temp {cooler:.1f}°C above {config.COOLER_MAX_BOTTLING}°C bottling limit")
+            if level > config.TANK_LEVEL_HIGH:
+                issues.append(f"Tank level {level:.0f}% above {config.TANK_LEVEL_HIGH}%")
+            if level < config.TANK_LEVEL_LOW:
+                issues.append(f"Tank level {level:.0f}% below {config.TANK_LEVEL_LOW}%")
+            if buffer > 50:
+                issues.append(f"Buffer {buffer}/60 — approaching capacity")
+            if issues:
+                lines.append("\n**Warnings:** " + "; ".join(issues))
+            else:
+                lines.append(f"\n**Assessment:** All readings normal. {completed} bottles completed. Line operating safely.")
+
+        lines.append(f"\n*For Claude-powered interactive answers, enter your Anthropic API key in the sidebar.*")
+        return "\n".join(lines)
 
     def _consult_with_claude(self, question: str, latest_tags: Dict,
                               recent_history: List[Dict]) -> str:
