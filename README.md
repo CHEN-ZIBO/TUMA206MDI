@@ -6,6 +6,80 @@ A complete industrial digital twin of a beverage pasteurization and bottling lin
 
 ---
 
+## Deployment
+
+This project can be run in two ways:
+
+### Option A — Streamlit Cloud (recommended for demo / evaluation)
+
+The application is deployed and live at:
+
+> **https://tuma206mdi-beverage-digital-system.streamlit.app/**
+
+No installation, no API key, no configuration required. Opens directly in a browser. The dashboard runs with the in-process message bus and rule-based AI fallback — all features work out of the box. For Claude-powered AI diagnostics, enter an Anthropic API key in the ALARMS page sidebar (the key is only stored in your browser session and never persisted).
+
+### Option B — Local Deployment (recommended for development / customisation)
+
+**Prerequisites:** Python 3.10+, `pip`, and a terminal (Windows PowerShell / macOS Terminal / Linux shell).
+
+**Step-by-step:**
+
+```bash
+# 1. Clone or download the repository to your computer
+#    (if using Git)
+git clone <repository-url> TUMA206-main-Final
+cd TUMA206-main-Final
+
+#    (if using a ZIP download)
+#    Extract the ZIP, open a terminal in the extracted folder.
+
+# 2. (Recommended) Create and activate a virtual environment
+python -m venv .venv
+
+#    Windows:
+.venv\Scripts\activate
+
+#    macOS / Linux:
+source .venv/bin/activate
+
+# 3. Install dependencies
+pip install -r requirements.txt
+
+# 4. Launch the dashboard
+streamlit run dashboard/app.py
+```
+
+The dashboard opens at `http://localhost:8501`. All three pages (SCHEMATIC, TRENDS, ALARMS) are available. The system runs entirely on your machine — no internet connection required for the core simulation and dashboard. The AI assistant works in rule-based mode by default; to enable Claude-powered answers, enter an API key on the ALARMS page.
+
+**Optional — enable real MQTT broker (advanced):**
+
+```bash
+# Set the environment variable before launching:
+#   Windows:  set USE_MQTT=1
+#   macOS/Linux: export USE_MQTT=1
+streamlit run dashboard/app.py
+```
+
+Requires a running Mosquitto broker on `localhost:1883`. The dashboard will publish and subscribe to real MQTT topics (`btl/tags`, `btl/cmd`) instead of using the in-process bus.
+
+**Optional — enable REST/WebSocket API (advanced):**
+
+```bash
+uvicorn backend.api:app --host 0.0.0.0 --port 8000
+```
+
+Exposes tag queries at `/api/tags/latest` and `/api/tags/history`, plus a WebSocket endpoint for live tag streaming. Useful for integrating with external monitoring tools.
+
+**Quick smoke test** (no browser needed):
+
+```bash
+python run.py --ticks 30
+```
+
+Runs 30 ticks of the simulation headlessly and prints the final state.
+
+---
+
 ## Table of Contents
 
 1. [System Architecture](#system-architecture)
