@@ -1,6 +1,6 @@
 # Smart Beverage Pasteurization & Bottling Line — Digital Twin
 
-**TUMA206 Group 1 — Final Submission**
+**TUMA206 Group 1**
 
 A complete industrial digital twin of a beverage pasteurization and bottling line, built as a pure-Python implementation of the Purdue enterprise reference architecture across five ISA-95 layers: physical process simulation → PLC control → MQTT data transport → operator dashboard → AI-assisted diagnostics. Every module has explicit input/output pins, a single responsibility, and a documented port specification.
 
@@ -53,10 +53,25 @@ MQTT_PASSWORD = Tuma2026demo
 MQTT_TOPIC_PREFIX = tuma206grp1bvg
 ```
 
+### Telegram Alarm Notifications (Optional)
+
+The local backend pushes a Telegram message when any alarm fires — runs on the **local machine** (where the engine lives), in a background thread that never blocks the control loop.
+
+**Setup:**
+1. Message **@BotFather** on Telegram → `/newbot` → copy the bot token
+2. Add the bot to your group, then open `https://api.telegram.org/bot<TOKEN>/getUpdates` → copy the chat ID
+3. Add to `.env`:
+```bash
+TELEGRAM_BOT_TOKEN=123456789:AA...
+TELEGRAM_CHAT_ID=-1001234567890
+```
+
+When set, `local_backend.py` prints `Telegram alarms: on` and sends a "backend online" message at startup. On every new alarm, the bot posts `[ALARM] <code> — <description> | Pasteur: <temp>°C | Tank: <level>%`. If the variables are missing, it stays silently off.
+
 ### Local Installation
 
 ```bash
-git clone <repo-url> && cd TUMA206-digital-twin-V5
+git clone <repo-url> && cd <project-dir>
 python -m venv .venv && .venv\Scripts\activate   # Windows
 pip install -r requirements.txt
 streamlit run dashboard/app.py                     # → http://localhost:8501
