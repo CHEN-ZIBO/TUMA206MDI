@@ -448,6 +448,6 @@ All constants in `config.py`. Key values:
 > **TUMA206 Group 1**
 >
 > Chen Zibo (03822012, ICD) · Ding Yuyao (03821587, ICD) · Lin Chen-Si (03821729, ICD)
-> Nie Zhaorui (03821814, ICD) · Zhao Xinglong (03822679, ICD) · Siew Xuan Hui (03822086, ICD)
+>  · Nie Zhaorui (03821814, ICD) · Zhao Xinglong (03822679, ICD) · Siew Xuan Hui (03822086, ICD)
 >
 > **Modern Developments in Industry · 2025/26 Semester 2** · Lecturer: Eldhose Abraham
