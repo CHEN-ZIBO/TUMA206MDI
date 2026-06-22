@@ -18,7 +18,17 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import config
-from dashboard.shared import get_engine
+from engine.remote import RemoteEngineProxy
+
+# ── Engine: fresh per restart, NOT shared via cache_resource ────────────
+# The cloud dashboard is a single page — no cross-page sharing needed.
+# @st.cache_resource is used only for the spinner; the instance is replaced
+# on each Streamlit restart, avoiding "cached failed connection forever".
+@st.cache_resource(show_spinner="Connecting to MQTT broker…")
+def _get_cloud_engine():
+    return RemoteEngineProxy(use_mqtt=True)
+
+engine = _get_cloud_engine()
 
 # ── Theme ──────────────────────────────────────────────────────────────
 BG      = "#0d1117"

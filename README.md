@@ -8,47 +8,59 @@ A complete industrial digital twin of a beverage pasteurization and bottling lin
 
 ## Deployment & Demo Guide
 
-### Quick Launch (Windows — double-click)
+### Quick Launch (Windows — double-click `START_ALL.bat`)
 
 | File | Effect |
 |------|--------|
-| **`START_ALL.bat`** | One-click: backend + local dashboard (:8501) + opens cloud dashboard in browser |
-| `launchers/1_start_local.bat` | Local backend only (engine + MQTT) |
-| `launchers/2_start_dashboard.bat` | Local dashboard only → `http://localhost:8501` |
-| `launchers/3_start_cloud.bat` | Opens cloud dashboard in browser |
+| **`START_ALL.bat`** | One-click: opens 3 windows — local backend + local dashboard (:8501) + browser → cloud dashboard |
+| `launchers/1_start_local.bat` | Local backend only (engine publishes to MQTT) |
+| `launchers/2_start_dashboard.bat` | Local dashboard → `http://localhost:8501` (SCHEMATIC/TRENDS/ALARMS) |
+| `launchers/3_start_cloud.bat` | Opens cloud dashboard URL in your browser |
 
-### URLs
+### Two Dashboards — What They Are
 
-| Dashboard | URL | Description |
-|-----------|-----|-------------|
-| **Cloud Monitor** | [tuma206mdi-beverage-line-cloud-dashboard.streamlit.app](https://tuma206mdi-beverage-line-cloud-dashboard.streamlit.app/) | Read-only MQTT-fed monitor — KPI cards, trends, alarms. No controls. |
-| Local Dashboard | `http://localhost:8501` | Full SCHEMATIC / TRENDS / ALARMS with control |
+| Dashboard | URL | Engine | Controls | MQTT |
+|-----------|-----|--------|----------|------|
+| **Local** | `http://localhost:8501` | Runs its own simulation in-process | Full: START/STOP, faults, manual override | Only when `DASHBOARD_MODE=remote` |
+| **Cloud Monitor** | [tuma206mdi-beverage-line-cloud-dashboard.streamlit.app](https://tuma206mdi-beverage-line-cloud-dashboard.streamlit.app/) | None — reads MQTT from your local backend | None — pure display | **Always** (reads from HiveMQ Cloud) |
+| **Full Demo** | [tuma206mdi-beverage-digital-system.streamlit.app](https://tuma206mdi-beverage-digital-system.streamlit.app/) | Self-contained in-process engine | Full (public demo — not linked to your local data) | No |
+
+> **Important:** The **Cloud Monitor** shows data ONLY when a local backend is running and publishing to the SAME MQTT broker. It does not run its own simulation. The **Full Demo** URL is a standalone showcase that runs its own engine — it does NOT connect to your local backend or upload data to the cloud monitor.
+
+### How the Cloud Monitor Works
+
+```
+Your PC                                   HiveMQ Cloud              Streamlit Cloud
+┌──────────────────┐                    ┌────────────┐            ┌──────────────────┐
+│ local_backend.py │  ──publish──>      │ MQTT       │  ──sub──> │ cloud_app.py     │
+│ (engine + MQTT)  │                    │ Broker     │            │ (read-only KPI)  │
+└──────────────────┘                    └────────────┘            └──────────────────┘
+```
+
+1. Your `.env` file has MQTT credentials (already configured)
+2. `local_backend.py` publishes every tick to the broker
+3. The cloud dashboard (deployed on Streamlit Cloud) subscribes to the same broker
+4. **Any machine** running `local_backend.py` with the same credentials will show up on the cloud dashboard
+5. If you close `local_backend.py`, the cloud dashboard shows "No data" — reopen it, data resumes
+
+**One-time setup for the cloud dashboard** (already done — Streamlit Secrets configured with):
+```
+MQTT_HOST = 3c57522d5f2e469d8ced051055a5bf1f.s1.eu.hivemq.cloud
+MQTT_PORT = 8883
+MQTT_TLS = 1
+MQTT_USERNAME = tumademo
+MQTT_PASSWORD = Tuma2026demo
+MQTT_TOPIC_PREFIX = tuma206grp1bvg
+```
 
 ### Local Installation
 
 ```bash
-git clone <repo-url> && cd TUMA206-main-Final
+git clone <repo-url> && cd TUMA206-digital-twin-V5
 python -m venv .venv && .venv\Scripts\activate   # Windows
 pip install -r requirements.txt
 streamlit run dashboard/app.py                     # → http://localhost:8501
 ```
-
-No API key or MQTT broker needed — the self-contained mode runs everything in-process. For cloud AI, enter an API key on the ALARMS page sidebar.
-
-### Distributed Mode (ISA-95 Split)
-
-```
-local_backend.py  ──MQTT──>  HiveMQ Cloud Broker  ──MQTT──>  cloud_app.py (Streamlit Cloud)
-(M1+M2+M3 engine)                                              (read-only KPI dashboard)
-```
-
-1. Configure MQTT credentials in `.env` (local) and Streamlit Secrets (cloud) — both must point to the **same** HiveMQ Cloud cluster
-2. Run `local_backend.py` on the plant-side machine
-3. The cloud dashboard at the URL above shows live data from any running backend
-
-### Telegram Alarms (Optional)
-
-Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in `.env`. The backend sends a `[ALARM]` message to your Telegram group on every alarm. Runs in background thread — never blocks control.
 
 ### Smoke Test
 
