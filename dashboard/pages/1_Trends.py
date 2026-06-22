@@ -16,7 +16,7 @@ BG = "#0d1117"
 CARD_BG = "#161b22"
 BORDER = "#30363d"
 TEXT = "#c9d1d9"
-TEXT_DIM = "#b0b8c0"
+TEXT_DIM = "#8b949e"
 ACCENT = "#58a6ff"
 
 st.markdown(f"""<style>
@@ -33,7 +33,11 @@ st.markdown(f"""<style>
     [data-testid="stSidebar"] .stButton > button:hover {{ background:#30363d !important; border-color:{ACCENT} !important; }}
     [data-testid="stSidebar"] hr {{ border-color:{BORDER} !important; }}
     .sidebar-section {{ font-size:0.55rem; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:{ACCENT}; margin-top:10px; margin-bottom:4px; }}
-    .section-label {{ font-size:0.65rem; font-weight:600; text-transform:uppercase; letter-spacing:0.1em; color:{TEXT_DIM}; margin:14px 0 8px 0; padding-bottom:6px; border-bottom:1px solid {BORDER}; }}
+    .section-label {{ font-size:0.65rem; font-weight:600; text-transform:uppercase; letter-spacing:0.1em; color:{TEXT_DIM}; text-align:center; margin:14px 0 8px 0; padding-bottom:6px; border-bottom:1px solid {BORDER}; }}
+    .chart-title {{
+        color:{TEXT}; font-size:1rem; font-weight:700; line-height:1.3;
+        text-align:center; margin:14px 0 12px 0;
+    }}
 </style>""", unsafe_allow_html=True)
 
 engine = get_engine()
@@ -61,8 +65,8 @@ with st.sidebar:
 
 st.markdown(f"""<div style="background:linear-gradient(90deg,{BG},{CARD_BG},{BG});border-radius:8px;
 padding:10px 22px;margin-bottom:6px;border-bottom:1px solid {BORDER};">
-<div style="font-size:1.1rem;font-weight:700;color:#f0f6fc;letter-spacing:0.06em;">TRENDS</div>
-<div style="font-size:0.62rem;color:{TEXT_DIM};">SENSOR DATA &bull; ACTUATOR COMMANDS &bull; FREEZE TO ZOOM</div></div>""", unsafe_allow_html=True)
+<div style="font-size:1.1rem;font-weight:700;color:{TEXT};letter-spacing:0.06em;">TRENDS</div>
+<div style="font-size:0.58rem;color:{TEXT_DIM};">SENSOR DATA &bull; ACTUATOR COMMANDS &bull; FREEZE TO ZOOM</div></div>""", unsafe_allow_html=True)
 
 _LAYOUT = dict(plot_bgcolor=CARD_BG, paper_bgcolor=BG, font=dict(color=TEXT, size=10),
                uirevision="constant", margin=dict(t=40, b=15, l=45, r=15))
@@ -107,7 +111,11 @@ def trends_view():
 
     plot_df = st.session_state["frozen_sensor_df"] if st.session_state["freeze_sensors"] else df
     if plot_df is not None and not plot_df.empty:
-        fig = make_subplots(rows=2, cols=2, subplot_titles=("Pasteurization Temp", "Tank Level", "Flow Rate", "Bottles Capped"))
+        fig = make_subplots(
+            rows=2, cols=2,
+            subplot_titles=("Pasteurization Temp", "Tank Level", "Flow Rate", "Bottles Capped"),
+            vertical_spacing=0.20,
+        )
         traces = [("pasteur_temp","#f85149",1,1,"°C"),("tank_level","#58a6ff",1,2,"%"),
                   ("flow_rate","#3fb950",2,1,"L/min"),("bottle_count","#d2991d",2,2,"")]
         yr = {"pasteur_temp":[60,82],"tank_level":[20,90],"flow_rate":[0,50],"bottle_count":None}
@@ -123,7 +131,13 @@ def trends_view():
             code=int(ev.get("alarm_code",0));ts_val=ev.get("ts",0)
             if code and ts_val>=plot_df["ts"].iloc[0]:
                 fig.add_vline(x=pd.to_datetime(ts_val,unit="s"),line_color="#f85149",line_dash="dash",line_width=1.5,row=1,col=1)
-        fig.update_layout(height=500,showlegend=False,**_LAYOUT)
+        fig.update_layout(height=520,showlegend=False,**_LAYOUT)
+        fig.update_layout(margin=dict(t=58, b=20, l=45, r=15))
+        fig.update_annotations(
+            font=dict(color=TEXT, size=15),
+            xanchor="center",
+            yshift=12,
+        )
         fig.update_xaxes(**_AXIS);fig.update_yaxes(**_AXIS)
         st.plotly_chart(fig,use_container_width=True,key="sensor_2x2")
     if st.session_state["freeze_sensors"]:
@@ -146,14 +160,16 @@ def trends_view():
         ca,cb = st.columns(2)
         with ca:
             if "heater_power_cmd" in act_df.columns:
+                st.markdown('<div class="chart-title">Heater Power (%)</div>', unsafe_allow_html=True)
                 fh=go.Figure()
                 fh.add_trace(go.Scatter(x=act_df["time"],y=act_df["heater_power_cmd"],name="Heater",
                              line=dict(color="#d2991d",width=2,shape="spline"),mode="lines",
                              hovertemplate="%{y:.0f} %<extra></extra>"))
-                fh.update_layout(title="Heater Power (%)",height=260,**_LAYOUT)
+                fh.update_layout(height=260,**_LAYOUT)
                 fh.update_yaxes(range=[0,105],**_AXIS);fh.update_xaxes(**_AXIS)
                 st.plotly_chart(fh,use_container_width=True,key="heater_chart")
         with cb:
+            st.markdown('<div class="chart-title">Cooler Temperature &amp; Valve</div>', unsafe_allow_html=True)
             fc=make_subplots(specs=[[{"secondary_y":True}]])
             if "cooler_temp" in act_df.columns:
                 fc.add_trace(go.Scatter(x=act_df["time"],y=act_df["cooler_temp"],name="Cooler °C",
@@ -163,8 +179,9 @@ def trends_view():
                 fc.add_trace(go.Scatter(x=act_df["time"],y=act_df["cooling_valve_cmd"],name="Cooling %",
                              line=dict(color="#3fb950",width=1.5,dash="dot"),mode="lines",
                              hovertemplate="%{y:.0f} %<extra></extra>"),secondary_y=True)
-            fc.update_layout(title="Cooler Temperature & Valve",height=260,**_LAYOUT,
-                             showlegend=True,legend=dict(orientation="h",yanchor="bottom",y=1.02))
+            fc.update_layout(height=260,**_LAYOUT, showlegend=True,
+                             legend=dict(orientation="h", x=0.5, xanchor="center",
+                                         yanchor="bottom", y=1.02))
             fc.update_yaxes(range=[0,35],**_AXIS);fc.update_yaxes(range=[0,105],secondary_y=True,**_AXIS)
             fc.update_xaxes(**_AXIS)
             st.plotly_chart(fc,use_container_width=True,key="cooler_chart")

@@ -12,13 +12,9 @@ This project can be run in two ways:
 
 ### Option A — Streamlit Cloud (recommended for demo / evaluation)
 
-**Cloud monitoring dashboard** (read-only, MQTT-fed from local backend):
+The application is deployed and live at:
 
-> **https://tuma206mdi-beverage-line-cloud-dashboard.streamlit.app/**
-
-**Full local dashboard demo** (self-contained, in-process engine):
-
-> https://tuma206mdi-beverage-digital-system.streamlit.app/
+> **https://tuma206mdi-beverage-digital-system.streamlit.app/**
 
 No installation, no API key, no configuration required. Opens directly in a browser. The dashboard runs with the in-process message bus and rule-based AI fallback — all features work out of the box. For Claude-powered AI diagnostics, enter an Anthropic API key in the ALARMS page sidebar (the key is only stored in your browser session and never persisted).
 
@@ -66,30 +62,21 @@ streamlit run dashboard/app.py
 
 Requires a running Mosquitto broker on `localhost:1883`. The dashboard will publish and subscribe to real MQTT topics (`btl/tags`, `btl/cmd`) instead of using the in-process bus.
 
-### Option C — Distributed: cloud monitor + local backend over MQTT (the ISA-95 split)
+### Option C — Distributed: cloud dashboard + local backend over MQTT (the ISA-95 split)
 
-The topology where a **cloud dashboard shows data only** while **all control/simulation runs locally**, with **MQTT** as the link — matching the Purdue / ISA-95 layering. The cloud dashboard is a read-only monitor: no START/STOP, no fault injection, no manual override. The local backend receives commands via MQTT and publishes the live tag stream back.
-
-**Quick launch (Windows — double-click the .bat file):**
-
-| 文件 | 双击效果 |
-|------|---------|
-| `START_ALL.bat` | 一键弹出 3 个窗口：后端 + 本地仪表板(:8501) + 云端监控(:8502) |
-| `1_start_local.bat` | 只启动本地后端 |
-| `2_start_dashboard.bat` | 只启动本地仪表板 → `http://localhost:8501` |
-| `3_start_cloud.bat` | 只启动云端监控 → `http://localhost:8502` |
-
-**Manual launch (terminal):**
+This is the topology where the **cloud dashboard runs the display only** and **all control/simulation runs locally**, with **MQTT** as the link between them — matching the Purdue / ISA-95 layering (L0 sensors → L1 controller → L2/L3 historian → MQTT → L4/L5 cloud dashboard). The dashboard never controls the machine directly: every operator action is published as an MQTT command (`btl/cmd`) and executed by the local backend, which publishes the live tag stream back (`btl/tags`).
 
 ```bash
-# Local backend
+# 1. Start an MQTT broker reachable by BOTH sides.
+#    Local single-laptop demo:  mosquitto -p 1883   (edit MQTT_HOST/PORT in config.py
+#    if you use a hosted/public broker so the cloud app can reach it too)
+
+# 2. Start the local backend (M1 plant + M2 PLC + M3 historian, publishes to MQTT):
 python local_backend.py
 
-# Local full dashboard
-streamlit run dashboard/app.py
-
-# Cloud monitor
-set DASHBOARD_MODE=remote && streamlit run cloud_app.py --server.port 8502
+# 3. Start the dashboard in DISPLAY-ONLY mode (runs no simulation, reads MQTT):
+#    Windows PowerShell:  $env:DASHBOARD_MODE="remote"; streamlit run dashboard/app.py
+#    macOS/Linux:         DASHBOARD_MODE=remote streamlit run dashboard/app.py
 ```
 
 | Process | Runs | Modules | Talks to broker via |
@@ -149,7 +136,7 @@ Exposes tag queries at `/api/tags/latest` and `/api/tags/history`, plus a WebSoc
 **Quick smoke test** (no browser needed):
 
 ```bash
-python scripts/run.py --ticks 30
+python run.py --ticks 30
 ```
 
 Runs 30 ticks of the simulation headlessly and prints the final state.
@@ -571,7 +558,7 @@ dashboard/
 backend/
   api.py                        # FastAPI REST + WebSocket (optional, for distributed deployment)
 
-run.py                          # CLI smoke test: python scripts/run.py --ticks 30
+run.py                          # CLI smoke test: python run.py --ticks 30
 ```
 
 ---
@@ -585,7 +572,7 @@ pip install -r requirements.txt
 streamlit run dashboard/app.py
 ```
 
-No API key, MQTT broker, or database setup required — everything runs locally with in-process message bus and SQLite. For Claude-powered AI diagnostics, enter an Anthropic API key on the ALARMS page sidebar. Terminal smoke test: `python scripts/run.py --ticks 30`.
+No API key, MQTT broker, or database setup required — everything runs locally with in-process message bus and SQLite. For Claude-powered AI diagnostics, enter an Anthropic API key on the ALARMS page sidebar. Terminal smoke test: `python run.py --ticks 30`.
 
 ### Demonstration Sequence (10 Steps)
 

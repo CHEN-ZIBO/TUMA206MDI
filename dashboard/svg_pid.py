@@ -16,7 +16,7 @@ import config
 BG     = "#0d1117"
 BDR    = "#30363d"
 TXT    = "#c9d1d9"
-TXT2   = "#b0b8c0"
+TXT2   = "#8b949e"
 ACC    = "#58a6ff"
 GRN    = "#3fb950"
 ORN    = "#d2991d"
@@ -431,7 +431,7 @@ def build_pid_svg(data: Dict) -> str:
         svg.append(_pipe(x1, PIPE_Y, x2, flow_ok))
 
     # Inlet Pump
-    svg.append(pump_node(IP_CX, IP_CY, IP_R, "INLET PUMP",
+    svg.append(pump_node(IP_CX, IP_CY, IP_R, "INLET VALVE",
                          f"{ic:.0f}%",
                          f"{'OPEN' if ic>0 else 'SHUT'}",
                          ic > 0 and running,

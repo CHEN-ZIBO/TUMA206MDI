@@ -14,7 +14,7 @@ BG = "#0d1117"
 CARD_BG = "#161b22"
 BORDER = "#30363d"
 TEXT = "#c9d1d9"
-TEXT_DIM = "#b0b8c0"
+TEXT_DIM = "#8b949e"
 ACCENT = "#58a6ff"
 GREEN = "#3fb950"
 ORANGE = "#d2991d"
@@ -86,9 +86,6 @@ st.markdown(f"""
         background: {ACCENT}33; color: {ACCENT}; padding: 2px 10px;
         border-radius: 10px; font-size: 0.7rem; font-weight: 700;
     }}
-    [data-testid="stMetricLabel"] {{ color: {TEXT_DIM} !important; }}
-    [data-testid="stMetricValue"] {{ color: {TEXT} !important; }}
-    [data-testid="stMetricDelta"] {{ color: {GREEN} !important; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -160,8 +157,8 @@ with st.sidebar:
 st.markdown(f"""
 <div style="background:linear-gradient(90deg,{BG},{CARD_BG},{BG});border-radius:8px;
 padding:10px 22px;margin-bottom:6px;border-bottom:1px solid {BORDER};">
-<div style="font-size:1.1rem;font-weight:700;color:#f0f6fc;letter-spacing:0.06em;">ALARMS</div>
-<div style="font-size:0.62rem;color:{TEXT_DIM};letter-spacing:0.05em;">FAULT DIAGNOSIS &bull; AI CONSULTATION &bull; EVENT HISTORY</div>
+<div style="font-size:1.1rem;font-weight:700;color:{TEXT};letter-spacing:0.06em;">ALARMS</div>
+<div style="font-size:0.58rem;color:{TEXT_DIM};letter-spacing:0.05em;">FAULT DIAGNOSIS &bull; AI CONSULTATION &bull; EVENT HISTORY</div>
 </div>""", unsafe_allow_html=True)
 
 
