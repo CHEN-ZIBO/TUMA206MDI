@@ -12,9 +12,13 @@ This project can be run in two ways:
 
 ### Option A — Streamlit Cloud (recommended for demo / evaluation)
 
-The application is deployed and live at:
+**Cloud monitoring dashboard** (read-only, MQTT-fed from local backend):
 
-> **https://tuma206mdi-beverage-digital-system.streamlit.app/**
+> **https://tuma206mdi-beverage-line-cloud-dashboard.streamlit.app/**
+
+**Full local dashboard demo** (self-contained, in-process engine):
+
+> https://tuma206mdi-beverage-digital-system.streamlit.app/
 
 No installation, no API key, no configuration required. Opens directly in a browser. The dashboard runs with the in-process message bus and rule-based AI fallback — all features work out of the box. For Claude-powered AI diagnostics, enter an Anthropic API key in the ALARMS page sidebar (the key is only stored in your browser session and never persisted).
 

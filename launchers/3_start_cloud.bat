@@ -1,11 +1,8 @@
 @echo off
-cd /d "%~dp0"
-cd ..
-echo =====================================
-echo   CLOUD MONITOR — read-only MQTT
-echo   http://localhost:8502
-echo =====================================
+echo Opening cloud dashboard in browser...
+echo   https://tuma206mdi-beverage-line-cloud-dashboard.streamlit.app
 echo.
-set DASHBOARD_MODE=remote
-streamlit run cloud_app.py --server.port 8502
+echo Make sure local_backend.py is running first!
+echo.
+start "" "https://tuma206mdi-beverage-line-cloud-dashboard.streamlit.app"
 pause
