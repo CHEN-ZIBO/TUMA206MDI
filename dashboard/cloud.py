@@ -5,8 +5,8 @@ over MQTT. Shows key KPIs with animated equipment icons, tank-level trend,
 pasteurizer temperature trend, and recent alarms. NO control capabilities —
 this is a pure display dashboard for the cloud (ISA-95 L4).
 
-Uses the shared `get_engine()` singleton which, in DASHBOARD_MODE=remote,
-returns a `RemoteEngineProxy` connected to the MQTT broker.
+Creates its own `RemoteEngineProxy` connected to the MQTT broker — no shared
+singleton needed since this is a single-page monitoring dashboard.
 """
 
 from __future__ import annotations
@@ -93,11 +93,6 @@ st.markdown(f"""
     }}
 </style>
 """, unsafe_allow_html=True)
-
-# ═══════════════════════════════════════════════════════════════════════
-# Engine — uses shared.get_engine() which respects DASHBOARD_MODE
-# ═══════════════════════════════════════════════════════════════════════
-engine = get_engine()
 
 # ── SVG icon builders ──────────────────────────────────────────────────
 def _icon_tank(level_pct: float) -> str:
