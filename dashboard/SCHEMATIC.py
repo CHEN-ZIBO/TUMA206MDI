@@ -15,7 +15,7 @@ BG = "#0d1117"
 CARD_BG = "#161b22"
 BORDER = "#30363d"
 TEXT = "#c9d1d9"
-TEXT_DIM = "#8b949e"
+TEXT_DIM = "#b0b8c0"
 ACCENT = "#58a6ff"
 GREEN = "#3fb950"
 ORANGE = "#d2991d"
@@ -369,8 +369,8 @@ with st.sidebar:
 st.markdown(f"""
 <div style="background:linear-gradient(90deg,#0d1117,#161b22,#0d1117);border-radius:8px;
 padding:10px 22px;margin-bottom:6px;border-bottom:1px solid {BORDER};">
-<div style="font-size:1.1rem;font-weight:700;color:{TEXT};letter-spacing:0.06em;">SCHEMATIC</div>
-<div style="font-size:0.58rem;color:{TEXT_DIM};letter-spacing:0.05em;">PROCESS FLOW DIAGRAM &bull; STAGE DETAILS &bull; PRODUCTION KPIs</div>
+<div style="font-size:1.1rem;font-weight:700;color:#f0f6fc;letter-spacing:0.06em;">SCHEMATIC</div>
+<div style="font-size:0.62rem;color:{TEXT_DIM};letter-spacing:0.05em;">PROCESS FLOW DIAGRAM &bull; STAGE DETAILS &bull; PRODUCTION KPIs</div>
 </div>""", unsafe_allow_html=True)
 
 
@@ -437,7 +437,7 @@ def live_view():
     prog_bar_filled = int(fill_prog * 16)
     prog_bar = "█" * prog_bar_filled + "░" * (16 - prog_bar_filled)
     lane_html = '<div style="display:flex;gap:16px;align-items:center;margin:4px 0 10px 0;">'
-    lane_html += '<span style="font-size:0.65rem;color:#8b949e;font-weight:600;">NOZZLES:</span>'
+    lane_html += '<span style="font-size:0.65rem;color:#b0b8c0;font-weight:600;">NOZZLES:</span>'
     for i, ns in enumerate(nozzle_status):
         if ns == 2: dot, label = "#3fb950", f"N{i+1} FULL"
         elif ns == 1: dot, label = "#58a6ff", f"N{i+1} FILL"

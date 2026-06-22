@@ -16,7 +16,7 @@ import config
 BG     = "#0d1117"
 BDR    = "#30363d"
 TXT    = "#c9d1d9"
-TXT2   = "#8b949e"
+TXT2   = "#b0b8c0"
 ACC    = "#58a6ff"
 GRN    = "#3fb950"
 ORN    = "#d2991d"

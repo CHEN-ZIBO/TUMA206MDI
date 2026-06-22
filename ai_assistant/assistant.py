@@ -113,20 +113,88 @@ _RULE_ADVICE: Dict[int, Dict[str, str]] = {
 }
 
 
+def _detect_provider(key: str) -> str:
+    """Pick the LLM provider from the API-key prefix.
+
+    * ``sk-ant-...``  -> Anthropic Claude
+    * ``sk-proj-...`` / any other ``sk-...`` -> OpenAI
+    """
+    key = (key or "").strip()
+    if key.startswith("sk-ant"):
+        return "anthropic"
+    if key.startswith("sk-"):
+        return "openai"
+    return ""
+
+
 class AIAssistant:
     def __init__(self) -> None:
-        self.api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+        # Accept either provider's key from env / Streamlit secrets.
+        self.api_key = (os.environ.get("ANTHROPIC_API_KEY", "").strip()
+                        or os.environ.get("OPENAI_API_KEY", "").strip())
         self._client = None
+        self.provider = ""          # "anthropic" | "openai" | ""
+        # init_error: why the LLM client failed to build (shown in the UI).
+        # last_error: why the most recent live API call fell back to rules.
+        self.init_error = ""
+        self.last_error = ""
         if self.api_key:
             self._init_client(self.api_key)
 
     def _init_client(self, key: str) -> None:
+        """Build the OpenAI or Anthropic client and record any failure reason.
+
+        Failures are stored in ``self.init_error`` (and printed) so the dashboard
+        can tell the operator EXACTLY why the LLM is not active instead of
+        silently falling back to the rule-based engine.
+        """
+        self.init_error = ""
+        self.last_error = ""
+        self._client = None
+        self.provider = _detect_provider(key)
+
+        if self.provider == "":
+            self.init_error = "API key not recognised (it should start with 'sk-ant-' for Claude or 'sk-' for OpenAI)."
+            return
+
+        if self.provider == "openai":
+            try:
+                from openai import OpenAI  # noqa: WPS433
+            except Exception as exc:  # noqa: BLE001
+                self.init_error = (f"openai package not importable ({type(exc).__name__}: {exc}). "
+                                   "Add 'openai' to requirements.txt and reboot the app.")
+                print(f"[AIAssistant] {self.init_error}")
+                return
+            try:
+                self._client = OpenAI(api_key=key)
+            except Exception as exc:  # noqa: BLE001
+                self.init_error = f"Could not start OpenAI client ({type(exc).__name__}: {exc})."
+                print(f"[AIAssistant] {self.init_error}")
+            return
+
+        # provider == "anthropic"
         try:
             import anthropic  # noqa: WPS433
-            self._client = anthropic.Anthropic(api_key=key)
         except Exception as exc:  # noqa: BLE001
-            print(f"[AIAssistant] Anthropic client unavailable ({exc}); using rule-based fallback.")
-            self._client = None
+            self.init_error = (f"anthropic package not importable ({type(exc).__name__}: {exc}). "
+                               "Add 'anthropic' to requirements.txt and reboot the app.")
+            print(f"[AIAssistant] {self.init_error}")
+            return
+        try:
+            self._client = anthropic.Anthropic(api_key=key)
+        except TypeError as exc:  # noqa: BLE001
+            # Known httpx/anthropic version clash (a 'proxies' kwarg newer httpx
+            # rejects). Retry with an explicit clean http client.
+            try:
+                import httpx  # noqa: WPS433
+                self._client = anthropic.Anthropic(api_key=key, http_client=httpx.Client())
+            except Exception as exc2:  # noqa: BLE001
+                self.init_error = (f"anthropic/httpx version clash ({type(exc).__name__}: {exc}). "
+                                   "Pin anthropic>=0.40 and reboot.")
+                print(f"[AIAssistant] {self.init_error} / retry: {exc2}")
+        except Exception as exc:  # noqa: BLE001
+            self.init_error = f"Could not start Claude client ({type(exc).__name__}: {exc})."
+            print(f"[AIAssistant] {self.init_error}")
 
     def update_api_key(self, key: str) -> None:
         """Hot-swap the API key from the dashboard UI. Re-initializes the client."""
@@ -138,10 +206,43 @@ class AIAssistant:
             self._init_client(key)
         else:
             self._client = None
+            self.provider = ""
+            self.init_error = ""
 
+    @property
+    def using_llm(self) -> bool:
+        return self._client is not None
+
+    # Backwards-compatible alias used by older page code.
     @property
     def using_claude(self) -> bool:
         return self._client is not None
+
+    @property
+    def provider_label(self) -> str:
+        return {"openai": f"OpenAI ({config.OPENAI_MODEL})",
+                "anthropic": f"Claude ({config.ANTHROPIC_MODEL})"}.get(self.provider, "Rule-based")
+
+    # ------------------------------------------------------------------
+    def _call_llm(self, system_prompt: str, user_msg: str) -> str:
+        """Single entry point for a chat completion, provider-agnostic."""
+        if self.provider == "openai":
+            response = self._client.chat.completions.create(
+                model=config.OPENAI_MODEL,
+                max_tokens=config.LLM_MAX_TOKENS,
+                messages=[{"role": "system", "content": system_prompt},
+                          {"role": "user", "content": user_msg}],
+            )
+            return (response.choices[0].message.content or "").strip()
+        # anthropic
+        response = self._client.messages.create(
+            model=config.ANTHROPIC_MODEL,
+            max_tokens=config.LLM_MAX_TOKENS,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        return "".join(block.text for block in response.content
+                       if getattr(block, "type", "") == "text").strip()
 
     # ------------------------------------------------------------------
     def consult(self, question: str, latest_tags: Dict,
@@ -149,8 +250,11 @@ class AIAssistant:
         """Free-form operator question. Returns plain-text answer string."""
         if self._client is not None:
             try:
-                return self._consult_with_claude(question, latest_tags, recent_history)
+                answer = self._consult_with_claude(question, latest_tags, recent_history)
+                self.last_error = ""
+                return answer
             except Exception as exc:  # noqa: BLE001
+                self.last_error = f"{type(exc).__name__}: {exc}"
                 print(f"[AIAssistant] Claude consult failed ({exc}); falling back.")
         return self._consult_with_rules(question, latest_tags)
 
@@ -191,7 +295,7 @@ class AIAssistant:
             else:
                 lines.append(f"\n**Assessment:** All readings normal. {completed} bottles completed. Line operating safely.")
 
-        lines.append(f"\n*For Claude-powered interactive answers, enter your Anthropic API key in the sidebar.*")
+        lines.append(f"\n*For AI-powered interactive answers, add an OpenAI (sk-proj-…) or Anthropic (sk-ant-…) API key in the sidebar.*")
         return "\n".join(lines)
 
     def _consult_with_claude(self, question: str, latest_tags: Dict,
@@ -205,14 +309,7 @@ class AIAssistant:
             f"Latest tags:\n{_format_tags(latest_tags)}\n\n"
             f"Recent trend:\n{trend}"
         )
-        response = self._client.messages.create(
-            model=config.ANTHROPIC_MODEL,
-            max_tokens=config.ANTHROPIC_MAX_TOKENS,
-            system=CONSULT_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_msg}],
-        )
-        return "".join(block.text for block in response.content
-                       if getattr(block, "type", "") == "text").strip()
+        return self._call_llm(CONSULT_SYSTEM_PROMPT, user_msg)
 
     # ------------------------------------------------------------------
     def diagnose(self, latest_tags: Dict, alarm_code: int,
@@ -220,9 +317,12 @@ class AIAssistant:
         """Return a recommendation dict for the dashboard (M4)."""
         if self._client is not None:
             try:
-                return self._diagnose_with_claude(latest_tags, alarm_code,
-                                                  recent_history)
+                result = self._diagnose_with_claude(latest_tags, alarm_code,
+                                                    recent_history)
+                self.last_error = ""
+                return result
             except Exception as exc:  # noqa: BLE001 - never break the dashboard
+                self.last_error = f"{type(exc).__name__}: {exc}"
                 print(f"[AIAssistant] Claude call failed ({exc}); falling back.")
         return self._diagnose_with_rules(alarm_code)
 
@@ -252,14 +352,7 @@ class AIAssistant:
             "Give the operator a short diagnosis and the safe actions to take."
         )
 
-        response = self._client.messages.create(
-            model=config.ANTHROPIC_MODEL,
-            max_tokens=config.ANTHROPIC_MAX_TOKENS,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_msg}],
-        )
-        text = "".join(block.text for block in response.content
-                       if getattr(block, "type", "") == "text").strip()
+        text = self._call_llm(SYSTEM_PROMPT, user_msg)
 
         label = config.ALARM_LABELS.get(alarm_code, "Diagnosis")
         if "Diagnosis:" in text:
@@ -268,7 +361,7 @@ class AIAssistant:
             "recommendation_text": text,
             "diagnosis_label": label,
             "confidence_level": "model",
-            "engine": f"claude ({config.ANTHROPIC_MODEL})",
+            "engine": self.provider_label,
         }
 
 

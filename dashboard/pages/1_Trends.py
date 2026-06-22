@@ -16,7 +16,7 @@ BG = "#0d1117"
 CARD_BG = "#161b22"
 BORDER = "#30363d"
 TEXT = "#c9d1d9"
-TEXT_DIM = "#8b949e"
+TEXT_DIM = "#b0b8c0"
 ACCENT = "#58a6ff"
 
 st.markdown(f"""<style>
@@ -61,8 +61,8 @@ with st.sidebar:
 
 st.markdown(f"""<div style="background:linear-gradient(90deg,{BG},{CARD_BG},{BG});border-radius:8px;
 padding:10px 22px;margin-bottom:6px;border-bottom:1px solid {BORDER};">
-<div style="font-size:1.1rem;font-weight:700;color:{TEXT};letter-spacing:0.06em;">TRENDS</div>
-<div style="font-size:0.58rem;color:{TEXT_DIM};">SENSOR DATA &bull; ACTUATOR COMMANDS &bull; FREEZE TO ZOOM</div></div>""", unsafe_allow_html=True)
+<div style="font-size:1.1rem;font-weight:700;color:#f0f6fc;letter-spacing:0.06em;">TRENDS</div>
+<div style="font-size:0.62rem;color:{TEXT_DIM};">SENSOR DATA &bull; ACTUATOR COMMANDS &bull; FREEZE TO ZOOM</div></div>""", unsafe_allow_html=True)
 
 _LAYOUT = dict(plot_bgcolor=CARD_BG, paper_bgcolor=BG, font=dict(color=TEXT, size=10),
                uirevision="constant", margin=dict(t=40, b=15, l=45, r=15))

@@ -22,6 +22,7 @@ from typing import Dict, Optional
 import config
 from historian import Historian
 from messaging import MessageBus, create_bus
+from notifications import TelegramNotifier
 from plc import PLCController
 from simulator import PlantSimulator
 
@@ -33,6 +34,22 @@ class SimulationEngine:
         self.plc = PLCController()
         self.bus = bus or create_bus(use_mqtt=use_mqtt)
         self.historian = historian or Historian()
+
+        # L4 enterprise edge: push a Telegram message whenever an alarm fires.
+        # No-op unless a bot token + chat id are configured (env / secrets).
+        self.notifier = TelegramNotifier()
+        self._last_notified_alarm = config.ALARM_NONE
+
+        # Operator commands may arrive over the M3 command topic (btl/cmd) as
+        # well as via direct method calls. This is what lets a REMOTE / cloud
+        # dashboard drive the line through MQTT instead of touching the engine
+        # directly — the dashboard publishes a command, the engine (here, on the
+        # local machine) executes it. Direct method calls still work unchanged
+        # for the single-process / local demo.
+        try:
+            self.bus.subscribe(config.MQTT_TOPIC_CMD, self._handle_command)
+        except Exception as exc:  # noqa: BLE001 - never block startup on the cmd link
+            print(f"[engine] could not subscribe to command topic: {exc}")
 
         # Operator command state (driven by the dashboard, M4).
         self._operator_start = 0
@@ -79,6 +96,41 @@ class SimulationEngine:
             self._reset_fault = 1
             self._simulate_stale = False
         self.plc.acknowledge()
+
+    # ------------------------------------------------------------------
+    # Command-over-bus dispatch (called when a command arrives on btl/cmd)
+    # ------------------------------------------------------------------
+    def _handle_command(self, payload: Dict) -> None:
+        """Execute an operator command received from the M3 command topic.
+
+        Expected payload shapes (JSON over MQTT, or dict in-process)::
+
+            {"cmd": "start"}
+            {"cmd": "stop"}
+            {"cmd": "inject", "code": 3}
+            {"cmd": "reset"}
+            {"cmd": "manual_set", "name": "cooling_valve_cmd", "value": 5}
+            {"cmd": "manual_clear", "name": "cooling_valve_cmd"}
+            {"cmd": "clear_all"}
+            {"cmd": "hard_reset"}
+        """
+        cmd = str(payload.get("cmd", "")).lower()
+        if cmd == "start":
+            self.start_line()
+        elif cmd == "stop":
+            self.stop_line()
+        elif cmd == "inject":
+            self.inject_fault(int(payload.get("code", config.FAULT_NONE)))
+        elif cmd == "reset":
+            self.reset_fault()
+        elif cmd == "manual_set":
+            self.set_manual_actuator(str(payload.get("name", "")), payload.get("value"))
+        elif cmd == "manual_clear":
+            self.clear_manual_actuator(str(payload.get("name", "")))
+        elif cmd == "clear_all":
+            self.clear_all_manuals()
+        elif cmd == "hard_reset":
+            self.hard_reset()
 
     # ------------------------------------------------------------------
     # Manual override API (operator can override any actuator anytime)
@@ -133,6 +185,7 @@ class SimulationEngine:
                 frozen.setdefault("ts", time.time())
                 self._latest = frozen
                 self._tick += 1
+            self._maybe_notify(frozen)
             return frozen
 
         data_stale_flag = 0
@@ -173,7 +226,23 @@ class SimulationEngine:
         with self._lock:
             self._latest = snapshot
             self._tick += 1
+        self._maybe_notify(snapshot)
         return snapshot
+
+    # ------------------------------------------------------------------
+    def _maybe_notify(self, snapshot: Dict) -> None:
+        """Push a Telegram alarm message on an alarm transition (edge-triggered).
+
+        Fires once when the active alarm changes to a non-zero code, so the
+        operator's phone buzzes on every NEW fault without being spammed every
+        tick while the alarm persists.
+        """
+        alarm_now = int(snapshot.get("alarm_code", config.ALARM_NONE))
+        if alarm_now == self._last_notified_alarm:
+            return
+        if alarm_now != config.ALARM_NONE:
+            self.notifier.notify_alarm(alarm_now, snapshot)
+        self._last_notified_alarm = alarm_now
 
     # ------------------------------------------------------------------
     # Background loop control

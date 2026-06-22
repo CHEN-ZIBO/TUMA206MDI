@@ -284,7 +284,7 @@ class PLCController:
             self.cooling_valve_cmd = cooling_valve_cmd
         else:
             cool_error = cooler_temp - config.COOLER_SETPOINT
-            cool_gain = 1.5
+            cool_gain = 2.5
             candidate = self.cooling_valve_cmd + cool_gain * cool_error
             sat_high = self.cooling_valve_cmd >= 100.0 and cool_error > 0
             sat_low  = self.cooling_valve_cmd <= 0.0 and cool_error < 0
@@ -331,23 +331,25 @@ class PLCController:
         capper_cmd = 1 if conveyor_cmd > 0 else 0
 
         # ── Startup sequencer gating ─────────────────────────────────
-        # During STARTING, gate actuators by startup phase so the line
-        # warms up before product flows: HEAT → PRIME → RUNNING.
-        if self.state == config.PLC_STARTING and not any([
-            man_inlet, man_pump, man_heater, man_cool]):
+        # During STARTING, gate actuators by startup phase: HEAT → PRIME → RUNNING.
+        # Each actuator is only gated if NOT manually overridden — the operator
+        # can take manual control of the inlet without affecting the pump sequence.
+        if self.state == config.PLC_STARTING:
             self._startup_ticks += 1
 
             if self._startup_phase == 0:
                 # HEAT: warm pasteurizer + cooler, fill tank. No flow.
                 if not man_heater:
-                    heater_power_cmd = 100.0  # full heat for rapid warm-up
+                    heater_power_cmd = 100.0
                     self.heater_power_cmd = 100.0
-                pump_cmd = 0.0
-                self.pump_cmd = 0.0
-                fill_valve_cmd = 0
-                conveyor_cmd = 0.0
-                capper_cmd = 0
-                # Transition to PRIME when temp + level are ready
+                if not man_pump:
+                    pump_cmd = 0.0
+                    self.pump_cmd = 0.0
+                if not man_fill:
+                    fill_valve_cmd = 0
+                if not man_conv:
+                    conveyor_cmd = 0.0
+                    capper_cmd = 0
                 if (pasteur_temp >= config.PASTEUR_SAFE_MIN and
                     cooler_temp <= config.COOLER_MAX_BOTTLING and
                     tank_level >= config.TANK_LEVEL_LOW):
@@ -359,13 +361,20 @@ class PLCController:
                 if not man_pump:
                     self.pump_cmd = _clamp(self.pump_cmd + 3.0, 0.0, 40.0)
                     pump_cmd = self.pump_cmd
-                fill_valve_cmd = 0
-                conveyor_cmd = 0.0
-                capper_cmd = 0
-                # Transition to RUNNING when flow is established
+                if not man_fill:
+                    fill_valve_cmd = 0
+                if not man_conv:
+                    conveyor_cmd = 0.0
+                    capper_cmd = 0
+                # Require stable flow for a few ticks before filler starts —
+                # creates a visible pause between "pump running" and "bottling".
                 if flow_rate > 5.0:
-                    self.state = config.PLC_RUNNING
-                    self._startup_phase = 2
+                    self._startup_ticks += 1
+                    if self._startup_ticks >= 3:
+                        self.state = config.PLC_RUNNING
+                        self._startup_phase = 2
+                else:
+                    self._startup_ticks = 0
 
         self.last_pump_cmd = pump_cmd
         return {
@@ -457,15 +466,27 @@ class PLCController:
             self._temp_range_count = 0
 
         # Tank level alarms: overflow (too full) or empty (too low).
-        # Both suppressed during HEAT — tank fills from 0% (can't drain with pump off).
-        # After a fault recovery with a full tank, PRIME will drain it safely.
         pump_active = (self.state == config.PLC_RUNNING or
-                       (self.state == config.PLC_STARTING and self._startup_phase >= 1))
-        if pump_active and tank_level >= config.TANK_CRITICAL_HIGH:
+                       (self.state == config.PLC_STARTING and self._startup_phase >= 1) or
+                       self.pump_cmd > 0)  # manual pump override during HEAT
+
+        # OVERFLOW is a hard safety hazard and must alarm whenever the line is
+        # active (STARTING or RUNNING), regardless of startup phase OR manual
+        # override. In AUTO the inlet valve closes above TANK_LEVEL_HIGH (80%),
+        # so the tank can never reach 90% on its own — a >=90% reading means the
+        # operator has forced the inlet open (manual override) and the tank is
+        # genuinely about to overflow. Previously this was gated on `pump_active`
+        # which is False during HEAT and stays False when a manual override
+        # freezes the startup sequencer, so a manually-overfilled tank never
+        # alarmed. Tie it to `running` instead so manual overfill is always caught.
+        if running and tank_level >= config.TANK_CRITICAL_HIGH:
             self._tank_overflow_count += 1
         else:
             self._tank_overflow_count = 0
 
+        # EMPTY is only dangerous when the pump is actually drawing product, so
+        # it stays gated on pump-active phases — during HEAT the tank legitimately
+        # fills from 0% with the pump off and must not raise a false empty alarm.
         if pump_active and tank_level <= config.TANK_CRITICAL_LOW:
             self._tank_empty_count += 1
         else:

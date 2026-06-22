@@ -191,13 +191,34 @@ NUMERIC_TAGS = [
 # ---------------------------------------------------------------------------
 # 8. MQTT / data-layer settings (M3) and AI settings (M5)
 # ---------------------------------------------------------------------------
-MQTT_HOST = "localhost"
-MQTT_PORT = 1883
-MQTT_TOPIC_TAGS = "btl/tags"          # plant + control + alarm tags snapshot
-MQTT_TOPIC_CMD = "btl/cmd"            # operator commands from dashboard
+import os as _os
+
+# MQTT broker. Defaults to the public HiveMQ test broker so the cloud dashboard
+# AND a local backend can reach the SAME broker with zero setup (route B). Any of
+# these can be overridden via environment variables / Streamlit secrets to point
+# at a private broker (e.g. HiveMQ Cloud with TLS + auth on port 8883).
+MQTT_HOST = _os.environ.get("MQTT_HOST", "broker.hivemq.com")
+MQTT_PORT = int(_os.environ.get("MQTT_PORT", "1883"))
+MQTT_USERNAME = _os.environ.get("MQTT_USERNAME", "")
+MQTT_PASSWORD = _os.environ.get("MQTT_PASSWORD", "")
+MQTT_TLS = _os.environ.get("MQTT_TLS", "0") == "1"
+# Public brokers are shared by the whole world, so namespace our topics with a
+# unique prefix to avoid colliding with other users. The local backend and the
+# dashboard MUST use the SAME prefix (override both with MQTT_TOPIC_PREFIX).
+MQTT_TOPIC_PREFIX = _os.environ.get("MQTT_TOPIC_PREFIX", "tuma206grp1bvg")
+MQTT_TOPIC_TAGS = f"{MQTT_TOPIC_PREFIX}/tags"   # plant + control + alarm tags snapshot
+MQTT_TOPIC_CMD = f"{MQTT_TOPIC_PREFIX}/cmd"     # operator commands from dashboard
 DATA_STALE_TIMEOUT_S = 5.0            # mark data stale if no update within this window
 
-import tempfile, os as _os
+# ── Telegram alarm notifications (optional) ───────────────────────────
+# When a token + chat id are provided (env / Streamlit secrets), the local
+# backend pushes a Telegram message every time an alarm fires. Get the token
+# from @BotFather; get the chat id by messaging the bot then calling
+# https://api.telegram.org/bot<token>/getUpdates (or add the bot to a group).
+TELEGRAM_BOT_TOKEN = _os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_CHAT_ID = _os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+
+import tempfile
 DB_PATH = _os.path.join(tempfile.gettempdir(), "historian.db")  # SQLite historian (works on Streamlit Cloud)
 CSV_EXPORT_PATH = _os.path.join(tempfile.gettempdir(), "history_export.csv")
 HISTORY_WINDOW_S = 300                # default trend window shown on the dashboard
@@ -210,8 +231,15 @@ def clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
 
 
-# Anthropic / Claude settings for the AI assistant (M5).
-# The API key is read from the ANTHROPIC_API_KEY environment variable; if it is
-# missing the assistant automatically falls back to a built-in rule-based engine.
-ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
-ANTHROPIC_MAX_TOKENS = 400
+# LLM settings for the AI assistant (M5). The assistant supports BOTH providers
+# and auto-detects which one to use from the API key prefix:
+#   * key starts with "sk-ant-"  -> Anthropic Claude
+#   * key starts with "sk-" (e.g. sk-proj-...) -> OpenAI
+# The key is read from ANTHROPIC_API_KEY or OPENAI_API_KEY (env / Streamlit
+# secrets) or typed into the dashboard sidebar. If none is set, the assistant
+# falls back to the built-in rule-based engine.
+ANTHROPIC_MODEL = _os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
+OPENAI_MODEL = _os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+LLM_MAX_TOKENS = 400
+# Backwards-compatible alias (older code referenced ANTHROPIC_MAX_TOKENS).
+ANTHROPIC_MAX_TOKENS = LLM_MAX_TOKENS

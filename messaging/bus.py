@@ -93,15 +93,44 @@ class MqttBus(MessageBus):
             ) from exc
 
         self._mqtt = mqtt
-        self._client = mqtt.Client()
+        # paho-mqtt 2.x requires a callback API version; 1.x does not accept it.
+        try:
+            self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+        except (AttributeError, TypeError):  # pragma: no cover - paho 1.x
+            self._client = mqtt.Client()
         self._subs: Dict[str, List[Callable[[Dict], None]]] = {}
         self._last: Dict[str, Dict] = {}
         self._last_ts: Dict[str, float] = {}
         self._lock = threading.RLock()
+        self.connected = False
+
+        # Optional auth + TLS for a private/hosted broker (e.g. HiveMQ Cloud).
+        if config.MQTT_USERNAME:
+            self._client.username_pw_set(config.MQTT_USERNAME, config.MQTT_PASSWORD)
+        if config.MQTT_TLS:
+            self._client.tls_set()
 
         self._client.on_message = self._on_message
+        self._client.on_connect = self._on_connect
         self._client.connect(host, port, keepalive=30)
         self._client.loop_start()
+
+    def _on_connect(self, *args) -> None:  # noqa: D401 - paho v1/v2 differ in args
+        """Log the connection result and re-subscribe to all known topics on
+        (re)connect, so a dropped broker connection self-heals without losing
+        the tag/command streams. ``args[3]`` is the result/reason code in both
+        the paho v1 and v2 callback signatures."""
+        rc = args[3] if len(args) >= 4 else None
+        ok = str(rc) in ("0", "Success") or getattr(rc, "is_failure", True) is False
+        self.connected = ok
+        if ok:
+            print(f"[MqttBus] connected to {config.MQTT_HOST}:{config.MQTT_PORT}")
+        else:
+            print(f"[MqttBus] connect FAILED ({rc}) — check host/port/credentials/TLS.")
+        with self._lock:
+            topics = list(self._subs.keys())
+        for topic in topics:
+            self._client.subscribe(topic)
 
     def _on_message(self, client, userdata, msg) -> None:  # noqa: D401
         try:
@@ -116,6 +145,13 @@ class MqttBus(MessageBus):
             cb(dict(payload))
 
     def publish(self, topic: str, payload: Dict) -> None:
+        # Record the publish locally so seconds_since_last() reflects our own
+        # freshly-sent data. Without this, a publisher that does not also
+        # subscribe to its own topic (e.g. the local backend publishing tags)
+        # would never "see" its data and would falsely report DATA_STALE.
+        with self._lock:
+            self._last[topic] = dict(payload)
+            self._last_ts[topic] = time.time()
         self._client.publish(topic, json.dumps(payload))
 
     def subscribe(self, topic: str, callback: Callable[[Dict], None]) -> None:

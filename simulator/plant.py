@@ -170,8 +170,8 @@ class PlantSimulator:
             # Heater power 0-100% → achievable target 25-90°C (ΔT = 65°C span).
             target = config.AMBIENT_TEMP + (heater_power_cmd / 100.0) * 65.0
 
-        # First-order heating toward target (industrial thermal inertia, τ≈0.05)
-        self.pasteur_temp += 0.05 * (target - self.pasteur_temp)
+        # First-order heating toward target (industrial thermal inertia, τ≈0.08)
+        self.pasteur_temp += 0.08 * (target - self.pasteur_temp)
 
         # Flow-through cooling: cold beverage (~25°C) enters the pasteurizer
         # continuously, absorbing heat from the heated product. More flow = more
@@ -224,7 +224,7 @@ class PlantSimulator:
             self._index_timer += 1
             # Dynamic gap: faster flow → shorter INDEX dead-time → faster cadence.
             # Flow 30+ → gap=1, 10-20 → gap=1, 5-10 → gap=2, <5 → gap=3.
-            dyn_gap = max(1, min(3, int(12.0 / max(self.flow_rate, 2.0))))
+            dyn_gap = max(1, min(3, int(8.0 / max(self.flow_rate, 2.0))))
             if self._index_timer >= dyn_gap:
                 self._index_timer = 0
                 self._fill_phase = "FILL"

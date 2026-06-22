@@ -62,6 +62,78 @@ streamlit run dashboard/app.py
 
 Requires a running Mosquitto broker on `localhost:1883`. The dashboard will publish and subscribe to real MQTT topics (`btl/tags`, `btl/cmd`) instead of using the in-process bus.
 
+### Option C — Distributed: cloud monitor + local backend over MQTT (the ISA-95 split)
+
+The topology where a **cloud dashboard shows data only** while **all control/simulation runs locally**, with **MQTT** as the link — matching the Purdue / ISA-95 layering. The cloud dashboard is a read-only monitor: no START/STOP, no fault injection, no manual override. The local backend receives commands via MQTT and publishes the live tag stream back.
+
+**Quick launch (Windows — double-click the .bat file):**
+
+| 文件 | 双击效果 |
+|------|---------|
+| `START_ALL.bat` | 一键弹出 3 个窗口：后端 + 本地仪表板(:8501) + 云端监控(:8502) |
+| `1_start_local.bat` | 只启动本地后端 |
+| `2_start_dashboard.bat` | 只启动本地仪表板 → `http://localhost:8501` |
+| `3_start_cloud.bat` | 只启动云端监控 → `http://localhost:8502` |
+
+**Manual launch (terminal):**
+
+```bash
+# Local backend
+python local_backend.py
+
+# Local full dashboard
+streamlit run dashboard/app.py
+
+# Cloud monitor
+set DASHBOARD_MODE=remote && streamlit run cloud_app.py --server.port 8502
+```
+
+| Process | Runs | Modules | Talks to broker via |
+|---------|------|---------|--------------------|
+| `local_backend.py` | local machine | M1 + M2 + M3 historian | publishes `btl/tags`, subscribes `btl/cmd` |
+| dashboard (`DASHBOARD_MODE=remote`) | cloud or local | M4 display + M5 AI only | subscribes `btl/tags`, publishes `btl/cmd` |
+
+Without `DASHBOARD_MODE=remote` (the default `local`) the dashboard is self-contained and runs everything in-process — that is the mode used by the public Streamlit Cloud showcase, which needs no broker.
+
+#### Broker: HiveMQ Cloud (free, internet-reachable — recommended for a real cloud dashboard)
+
+`mosquitto` on `localhost` only works when the dashboard and backend share one machine. For a dashboard hosted on **Streamlit Cloud** the broker must be reachable from the internet, so use a free [HiveMQ Cloud](https://www.hivemq.com/mqtt-cloud-broker/) serverless cluster:
+
+1. Create a free **Serverless** cluster, then under **Access Management → Add Credentials** create a username/password with **Publish and Subscribe** permission.
+2. Copy the **Cluster URL** from the **Overview** tab. Connections use **TLS on port 8883**.
+3. Configure both sides (local `.env` and the cloud dashboard's Streamlit secrets) with the **same** values:
+
+```bash
+MQTT_HOST=<your-cluster>.s1.eu.hivemq.cloud
+MQTT_PORT=8883
+MQTT_TLS=1
+MQTT_USERNAME=<your_username>
+MQTT_PASSWORD=<your_password>
+MQTT_TOPIC_PREFIX=tuma206grp1bvg   # any string; both sides must match
+```
+
+For the Streamlit Cloud dashboard, also set `DASHBOARD_MODE = "remote"` in **Manage app → Settings → Secrets** (see `.streamlit/secrets.toml.example`).
+
+> **Gotcha we hit:** if the broker's built-in **Web Client** connects fine but external clients (paho/MQTT Explorer) get `CONNACK: Not authorized` with the exact same credentials, the free serverless cluster is in a bad state — **delete it and create a fresh cluster**. This is a known HiveMQ Cloud free-tier issue, not a code/credentials problem. Also note some restrictive networks block the plaintext MQTT port `1883`; TLS `8883` is the reliable choice.
+
+### Telegram alarm notifications (optional, L4 enterprise edge)
+
+The local backend can push a Telegram message to your group every time an alarm fires — the same idea as the lecturer's reference `plant_ops_2026` bot. It runs on the **local backend** (where the engine and alarms live), not on the cloud dashboard, and it never blocks the control loop (messages are sent in a background thread).
+
+**Setup (one-time):**
+
+1. In Telegram, message **@BotFather** → `/newbot` → copy the **bot token** (looks like `123456789:AA...`).
+2. Add the bot to your group (or just send it a direct message), then open
+   `https://api.telegram.org/bot<TOKEN>/getUpdates` in a browser and copy the **chat id** (a group id looks like `-100...`).
+3. Put both into `.env` (local) or Streamlit secrets:
+
+```bash
+TELEGRAM_BOT_TOKEN=123456789:AA...
+TELEGRAM_CHAT_ID=-1001234567890
+```
+
+When set, `python local_backend.py` prints `Telegram alarms: on`, sends one "backend online" test message at startup, and then sends `[ALARM] ...` on every new alarm. If the variables are missing it stays silently off — nothing else changes.
+
 **Optional — enable REST/WebSocket API (advanced):**
 
 ```bash
@@ -465,17 +537,23 @@ plc/
   controller.py                 # M2 — state machine, PI/P control, 8 fault detectors, manual override adaptation
 
 engine/
-  __init__.py                   # Package, exports SimulationEngine
-  runtime.py                    # Closed-loop M1↔M2 wire-up, background thread, operator command API
+  __init__.py                   # Package, exports SimulationEngine + RemoteEngineProxy
+  runtime.py                    # Closed-loop M1↔M2 wire-up, background thread, operator command API, alarm→Telegram
+  remote.py                     # RemoteEngineProxy — display-only dashboard client driven purely over MQTT
 
 messaging/
-  bus.py                        # M3a — InProcessBus (default) / MqttBus (USE_MQTT=1)
+  bus.py                        # M3a — InProcessBus (default) / MqttBus (auth + TLS, for HiveMQ Cloud)
 
 historian/
   store.py                      # M3b — SQLite schema auto-creation, record(), recent(), recent_alarms(), export_csv()
 
+notifications/
+  telegram.py                   # L4 enterprise edge — pushes [ALARM] messages to Telegram on each alarm (optional)
+
 ai_assistant/
-  assistant.py                  # M5 — Claude API (diagnose + consult) + rule-based fallback (8 alarm types)
+  assistant.py                  # M5 — OpenAI / Anthropic auto-detected (diagnose + consult) + rule-based fallback
+
+local_backend.py                # On-premise runner: engine + MQTT publish/subscribe + Telegram (distributed mode)
 
 dashboard/
   app.py                        # Streamlit entry point — st.navigation([SCHEMATIC, TRENDS, ALARMS])
