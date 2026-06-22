@@ -145,7 +145,7 @@ Exposes tag queries at `/api/tags/latest` and `/api/tags/history`, plus a WebSoc
 **Quick smoke test** (no browser needed):
 
 ```bash
-python run.py --ticks 30
+python scripts/run.py --ticks 30
 ```
 
 Runs 30 ticks of the simulation headlessly and prints the final state.
@@ -567,7 +567,7 @@ dashboard/
 backend/
   api.py                        # FastAPI REST + WebSocket (optional, for distributed deployment)
 
-run.py                          # CLI smoke test: python run.py --ticks 30
+run.py                          # CLI smoke test: python scripts/run.py --ticks 30
 ```
 
 ---
@@ -581,7 +581,7 @@ pip install -r requirements.txt
 streamlit run dashboard/app.py
 ```
 
-No API key, MQTT broker, or database setup required — everything runs locally with in-process message bus and SQLite. For Claude-powered AI diagnostics, enter an Anthropic API key on the ALARMS page sidebar. Terminal smoke test: `python run.py --ticks 30`.
+No API key, MQTT broker, or database setup required — everything runs locally with in-process message bus and SQLite. For Claude-powered AI diagnostics, enter an Anthropic API key on the ALARMS page sidebar. Terminal smoke test: `python scripts/run.py --ticks 30`.
 
 ### Demonstration Sequence (10 Steps)
 

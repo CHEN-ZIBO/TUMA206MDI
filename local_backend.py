@@ -61,6 +61,8 @@ def main() -> None:
         print(f"[OK] Connected via {bus_kind}. Waiting for dashboard commands…\n")
 
     engine.start()
+    engine.start_line()  # auto-start production so cloud dashboard sees live data
+    print("Line auto-started — cloud dashboard will show live data.\n")
     try:
         while True:
             time.sleep(5)

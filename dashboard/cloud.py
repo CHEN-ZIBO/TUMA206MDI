@@ -48,7 +48,7 @@ st.markdown(f"""
     .kpi-card {{
         background: {CARD}; border: 1px solid {BDR}; border-radius: 10px;
         padding: 14px 16px; display: flex; align-items: center; gap: 14px;
-        transition: border-color 0.3s; min-height: 80px;
+        transition: border-color 0.3s; height: 88px; box-sizing: border-box;
     }}
     .kpi-card:hover {{ border-color: {ACC}66; }}
     .kpi-icon {{ flex-shrink: 0; width: 48px; height: 48px; }}
@@ -157,6 +157,24 @@ def _icon_bottles(n: int) -> str:
         f'<rect x="20" y="14" width="8" height="6" rx="1" fill="{LIQUID}" opacity="0.6"/>'
         f'<rect x="20" y="22" width="8" height="6" rx="1" fill="{LIQUID}" opacity="0.6"/>'
         f'<rect x="21" y="7" width="6" height="4" rx="1" fill="{c}" opacity="0.5"/>'
+        f'</svg>')
+
+
+def _icon_plc(state: str) -> str:
+    c = GRN if state == "RUNNING" else (RED if state == "FAULT" else ORN)
+    return (
+        f'<svg viewBox="0 0 48 48" width="48" height="48">'
+        f'<circle cx="24" cy="24" r="16" fill="none" stroke="{c}" stroke-width="3"/>'
+        f'<circle cx="24" cy="24" r="8" fill="{c}" opacity="0.75"/>'
+        f'</svg>')
+
+def _icon_alarm(active: bool) -> str:
+    c = RED if active else GRN
+    ch = "!" if active else "&#10003;"
+    return (
+        f'<svg viewBox="0 0 48 48" width="48" height="48">'
+        f'<polygon points="24,4 44,44 4,44" fill="none" stroke="{c}" stroke-width="2.5"/>'
+        f'<text x="24" y="36" text-anchor="middle" fill="{c}" font-size="18" font-weight="900">{ch}</text>'
         f'</svg>')
 
 
@@ -282,21 +300,14 @@ def monitor_view():
         plc_label = {"HEAT": "WARMING UP", "PRIME": "PRIMING", "RUNNING": "RUNNING",
                      "IDLE": "IDLE", "FAULT": "FAULT", "STOPPING": "STOPPING"}.get(plc_phase, plc)
         st.markdown(kpi_card(
-            f'<svg viewBox="0 0 48 48" width="48" height="48">'
-            f'<circle cx="24" cy="24" r="16" fill="none" stroke="{GRN if plc=="RUNNING" else (RED if plc=="FAULT" else ORN)}" stroke-width="3"/>'
-            f'<circle cx="24" cy="24" r="8" fill="{GRN if plc=="RUNNING" else (RED if plc=="FAULT" else ORN)}" opacity="0.75"/>'
-            f'</svg>',
-            plc_label, "PLC STATE",
-            f"Phase {phase}" if plc == "STARTING" else "",
+            _icon_plc(plc), plc_label, "PLC STATE",
+            f"Phase {phase}" if plc == "STARTING" else "Automated",
             "ok" if plc == "RUNNING" else ("fault" if plc == "FAULT" else "warn")), unsafe_allow_html=True)
     with c8:
         st.markdown(kpi_card(
-            f'<svg viewBox="0 0 48 48" width="48" height="48">'
-            f'<polygon points="24,4 44,44 4,44" fill="none" stroke="{RED if alarm_code else GRN}" stroke-width="2.5"/>'
-            f'<text x="24" y="36" text-anchor="middle" fill="{RED if alarm_code else GRN}" font-size="18" font-weight="900">{"!" if alarm_code else "&#10003;"}</text>'
-            f'</svg>',
-            "ALARM" if alarm_code else "NORMAL", "STATUS",
-            alarm_label if alarm_code else "No active alarms",
+            _icon_alarm(alarm_code != 0),
+            alarm_label if alarm_code else "NORMAL", "STATUS",
+            "Active alarm" if alarm_code else "No active alarms",
             "" if alarm_code == 0 else "fault"), unsafe_allow_html=True)
 
     # ── Trend Charts ───────────────────────────────────────────────────
