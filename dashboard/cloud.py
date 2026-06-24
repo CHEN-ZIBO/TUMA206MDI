@@ -20,15 +20,24 @@ import streamlit as st
 import config
 from engine.remote import RemoteEngineProxy
 
-# ── Engine: fresh per restart, NOT shared via cache_resource ────────────
-# The cloud dashboard is a single page — no cross-page sharing needed.
-# @st.cache_resource is used only for the spinner; the instance is replaced
-# on each Streamlit restart, avoiding "cached failed connection forever".
+# ── Engine: one shared MQTT client per configured broker ───────────────
+# The connection key invalidates the resource when Streamlit Secrets change,
+# while sharing one Paho network thread across browser sessions.
 @st.cache_resource(show_spinner="Connecting to MQTT broker…")
-def _get_cloud_engine():
+def _get_cloud_engine(connection_key: tuple) -> RemoteEngineProxy:
+    del connection_key  # used only as the Streamlit cache key
     return RemoteEngineProxy(use_mqtt=True)
 
-engine = _get_cloud_engine()
+
+_connection_key = (
+    config.MQTT_HOST,
+    config.MQTT_PORT,
+    config.MQTT_TLS,
+    config.MQTT_USERNAME,
+    config.MQTT_PASSWORD,
+    config.MQTT_TOPIC_PREFIX,
+)
+engine = _get_cloud_engine(_connection_key)
 
 # ── Theme ──────────────────────────────────────────────────────────────
 BG      = "#0d1117"
@@ -43,8 +52,6 @@ RED     = "#f85149"
 CYA     = "#39d2c0"
 STEEL   = "#2d333b"
 LIQUID  = "#3a7bd5"
-
-st.set_page_config(page_title="Beverage Line Monitor", layout="wide", page_icon="⏣")
 
 st.markdown(f"""
 <style>
@@ -217,8 +224,10 @@ display:flex;justify-content:space-between;align-items:center;">
 # ═══════════════════════════════════════════════════════════════════════
 # ── MQTT diagnostics ───────────────────────────────────────────────────
 bus_kind = type(engine.bus).__name__
-if bus_kind == "MqttBus":
+if bus_kind == "MqttBus" and getattr(engine.bus, "connected", False):
     mqtt_info = f"MQTT connected → {config.MQTT_HOST}:{config.MQTT_PORT}"
+elif bus_kind == "MqttBus":
+    mqtt_info = f"MQTT connecting → {config.MQTT_HOST}:{config.MQTT_PORT}"
 else:
     mqtt_info = f"WARNING: Using {bus_kind} — MQTT broker unreachable. Check credentials in Streamlit Secrets."
 
@@ -360,7 +369,7 @@ def monitor_view():
                 xaxis=dict(gridcolor=BDR, zeroline=False),
                 yaxis=dict(gridcolor=BDR, zeroline=False, range=[0, 105]),
                 showlegend=False, uirevision="cloud_tank")
-            st.plotly_chart(fig_tank, use_container_width=True, key="cld_tank")
+            st.plotly_chart(fig_tank, width="stretch", key="cld_tank")
 
         with right:
             fig_temp = go.Figure()
@@ -382,7 +391,7 @@ def monitor_view():
                 xaxis=dict(gridcolor=BDR, zeroline=False),
                 yaxis=dict(gridcolor=BDR, zeroline=False, range=[60, 82]),
                 showlegend=False, uirevision="cloud_temp")
-            st.plotly_chart(fig_temp, use_container_width=True, key="cld_temp")
+            st.plotly_chart(fig_temp, width="stretch", key="cld_temp")
     else:
         st.caption("Waiting for trend data from MQTT…")
 

@@ -238,7 +238,7 @@ def clamp(value: float, low: float, high: float) -> float:
 # The key is read from ANTHROPIC_API_KEY or OPENAI_API_KEY (env / Streamlit
 # secrets) or typed into the dashboard sidebar. If none is set, the assistant
 # falls back to the built-in rule-based engine.
-ANTHROPIC_MODEL = _os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
+ANTHROPIC_MODEL = _os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 OPENAI_MODEL = _os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 LLM_MAX_TOKENS = 400
 # Backwards-compatible alias (older code referenced ANTHROPIC_MAX_TOKENS).

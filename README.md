@@ -2,6 +2,8 @@
 
 **TUMA206 Group 1**
 
+Canonical repository: **[linchensi/TUMA206-digital-twin-V5](https://github.com/linchensi/TUMA206-digital-twin-V5)**
+
 A complete industrial digital twin of a beverage pasteurization and bottling line, built as a pure-Python implementation of the Purdue enterprise reference architecture across five ISA-95 layers: physical process simulation → PLC control → MQTT data transport → operator dashboard → AI-assisted diagnostics. Every module has explicit input/output pins, a single responsibility, and a documented port specification.
 
 ---
@@ -12,18 +14,22 @@ A complete industrial digital twin of a beverage pasteurization and bottling lin
 
 | File | Effect |
 |------|--------|
-| **`START_ALL.bat`** | One-click: opens 3 windows — local backend + local dashboard (:8501) + browser → cloud dashboard |
-| `launchers/1_start_local.bat` | Local backend only (engine publishes to MQTT) |
-| `launchers/2_start_dashboard.bat` | Local dashboard → `http://localhost:8501` (SCHEMATIC/TRENDS/ALARMS) |
-| `launchers/3_start_cloud.bat` | Opens cloud dashboard URL in your browser |
+| **`START_ALL.bat`** | Starts one local backend and the MQTT-connected HMI at `http://localhost:8501`, then opens both the local HMI and Community Cloud monitor |
+| `launchers/1_start_local.bat` | Starts only the plant/backend publisher |
+| `launchers/2_start_dashboard.bat` | Starts only the MQTT-connected HMI at `http://localhost:8501`; the backend must already be running |
+| `launchers/3_start_cloud.bat` | Opens the [Community Cloud monitor](https://dashboard-beverage-digital-twin.streamlit.app/) |
 
-### Two Dashboards — What They Are
+> [!CAUTION]
+> Run **exactly one `local_backend.py` per `MQTT_TOPIC_PREFIX`**. Multiple backends publish different simulations to the same topic, causing tick values and alarms to flicker between states. Close old backend terminals before running `START_ALL.bat` again.
 
-| Dashboard | URL | Engine | Controls | MQTT |
-|-----------|-----|--------|----------|------|
-| **Local** | `http://localhost:8501` | Runs its own simulation in-process | Full: START/STOP, faults, manual override | Only when `DASHBOARD_MODE=remote` |
-| **Cloud Monitor** | [tuma206mdi-beverage-line-cloud-dashboard.streamlit.app](https://tuma206mdi-beverage-line-cloud-dashboard.streamlit.app/) | None — reads MQTT from your local backend | None — pure display | **Always** (reads from HiveMQ Cloud) |
-| **Full Demo** | [tuma206mdi-beverage-digital-system.streamlit.app](https://tuma206mdi-beverage-digital-system.streamlit.app/) | Self-contained in-process engine | Full (public demo — not linked to your local data) | No |
+### Runtime Modes
+
+| Mode | Entry point | Engine | Controls | MQTT |
+|------|-------------|--------|----------|------|
+| **Quick launch / local HMI** | `START_ALL.bat` → `http://localhost:8501` | `local_backend.py` runs the plant; HMI uses `RemoteEngineProxy` | Full controls, sent as MQTT commands | Yes |
+| **Standalone local demo** | `python -m streamlit run dashboard/app.py` | `SimulationEngine` runs inside Streamlit | Full direct controls | No, unless `USE_MQTT=1` |
+| **Cloud Monitor** | [beverage-digital-twin.streamlit.app](https://dashboard-beverage-digital-twin.streamlit.app/) | No simulation; read-only MQTT subscriber | None | Yes |
+| **Full Demo** | [tuma206mdi-beverage-digital-system.streamlit.app](https://tuma206mdi-beverage-digital-system.streamlit.app/) | Self-contained `SimulationEngine` | Full direct controls | No |
 
 > **Important:** The **Cloud Monitor** shows data ONLY when a local backend is running and publishing to the SAME MQTT broker. It does not run its own simulation. The **Full Demo** URL is a standalone showcase that runs its own engine — it does NOT connect to your local backend or upload data to the cloud monitor.
 
@@ -37,21 +43,46 @@ Your PC                                   HiveMQ Cloud              Streamlit Cl
 └──────────────────┘                    └────────────┘            └──────────────────┘
 ```
 
-1. Your `.env` file has MQTT credentials (already configured)
-2. `local_backend.py` publishes every tick to the broker
-3. The cloud dashboard (deployed on Streamlit Cloud) subscribes to the same broker
-4. **Any machine** running `local_backend.py` with the same credentials will show up on the cloud dashboard
-5. If you close `local_backend.py`, the cloud dashboard shows "No data" — reopen it, data resumes
+1. The local `.env` file supplies the broker credentials.
+2. One `local_backend.py` publishes a tag snapshot every second on `{prefix}/tags` and listens for HMI commands on `{prefix}/cmd`.
+3. The local MQTT HMI and Community Cloud monitor subscribe to the same tag topic.
+4. Closing the backend stops live updates; starting exactly one backend resumes them.
 
-**One-time setup for the cloud dashboard** (already done — Streamlit Secrets configured with):
+### MQTT Configuration
+
+Create `.env` locally using dotenv syntax:
+
+```dotenv
+MQTT_HOST=<your-cluster>.s1.eu.hivemq.cloud
+MQTT_PORT=8883
+MQTT_TLS=1
+MQTT_USERNAME=<your-username>
+MQTT_PASSWORD=<your-password>
+MQTT_TOPIC_PREFIX=<unique-topic-prefix>
 ```
-MQTT_HOST = 3c57522d5f2e469d8ced051055a5bf1f.s1.eu.hivemq.cloud
-MQTT_PORT = 8883
-MQTT_TLS = 1
-MQTT_USERNAME = tumademo
-MQTT_PASSWORD = Tuma2026demo
-MQTT_TOPIC_PREFIX = tuma206grp1bvg
+
+For Streamlit Community Cloud, open **App settings → Secrets** and use TOML syntax (strings require quotes):
+
+```toml
+MQTT_HOST = "<your-cluster>.s1.eu.hivemq.cloud"
+MQTT_PORT = "8883"
+MQTT_TLS = "1"
+MQTT_USERNAME = "<your-username>"
+MQTT_PASSWORD = "<your-password>"
+MQTT_TOPIC_PREFIX = "<unique-topic-prefix>"
 ```
+
+The local backend and every remote dashboard must use identical MQTT settings. `.env` and `.streamlit/secrets.toml` are ignored by Git; never commit real broker, Telegram, or API credentials. Save and reboot the Community Cloud app after changing Secrets.
+
+### Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| Alarm appears and clears every few seconds; tick jumps backward/forward | Multiple backends publish to the same topic prefix | Close every old backend process, then run `START_ALL.bat` once |
+| Cloud monitor shows **No data** | Backend stopped, MQTT values differ, or topic prefix differs | Start one backend and compare all six MQTT settings on both sides |
+| `http://localhost:8501` does not open | Dashboard is still starting or port 8501 is occupied | Wait a few seconds; close old dashboard terminals before retrying |
+| Community Cloud is slow on its first visit | The free app is waking from sleep | Wait for the cold start; normal live refresh is approximately 1–3 seconds |
+| Cloud code or Secrets changed but old behaviour remains | Community Cloud hot reload retained old process state | Save settings and use **Reboot app** once |
 
 ### Telegram Alarm Notifications (Optional)
 
@@ -70,12 +101,18 @@ When set, `local_backend.py` prints `Telegram alarms: on` and sends a "backend o
 
 ### Local Installation
 
+Prerequisites: Windows 10/11, Python 3.10 or newer, Git, and internet access when using HiveMQ Cloud or the hosted dashboard.
+
 ```bash
-git clone <repo-url> && cd <project-dir>
-python -m venv .venv && .venv\Scripts\activate   # Windows
+git clone https://github.com/linchensi/TUMA206-digital-twin-V5.git
+cd TUMA206-digital-twin
+python -m venv .venv
+.venv\Scripts\activate
 pip install -r requirements.txt
-streamlit run dashboard/app.py                     # → http://localhost:8501
+python -m streamlit run dashboard/app.py --server.port 8501
 ```
+
+The command above is the self-contained local demo. For the distributed MQTT demonstration, configure `.env` and use `START_ALL.bat` instead.
 
 ### Smoke Test
 
@@ -202,12 +239,13 @@ IDLE ──[START]──> STARTING(HEAT) ──[temp+level OK]──> STARTING(P
 
 ### M4 — Dashboard
 
-Two dashboard types sharing the same codebase via `dashboard/shared.py`:
+The multi-page HMI supports two engine modes via `dashboard/shared.py`; the separate cloud entry point is always read-only:
 
 | Dashboard | Entry Point | Engine | Control |
-|-----------|------------|--------|---------|
-| **Local** | `dashboard/app.py` → `:8501` | `SimulationEngine` (in-process or MQTT) | Full: START/STOP, faults, manual override |
-| **Cloud** | `cloud_app.py` → Streamlit Cloud | `RemoteEngineProxy` (MQTT only) | None — read-only monitor |
+|-----------|-------------|--------|---------|
+| **Standalone local** | `dashboard/app.py` with default `DASHBOARD_MODE=local` | In-process `SimulationEngine` | Full direct control |
+| **MQTT local HMI** | `dashboard/app.py` with `DASHBOARD_MODE=remote` | `RemoteEngineProxy`; plant runs in `local_backend.py` | Full controls published on `{prefix}/cmd` |
+| **Cloud Monitor** | `cloud_app.py` on Community Cloud | `RemoteEngineProxy`; tag subscription only in the rendered UI | Read-only monitoring |
 
 | Page | Content |
 |------|---------|
@@ -354,7 +392,15 @@ Process alarms (triggered by conditions, not injected):
 
 ## Cloud Monitoring Dashboard
 
-Deployed at **[tuma206mdi-beverage-line-cloud-dashboard.streamlit.app](https://tuma206mdi-beverage-line-cloud-dashboard.streamlit.app/)**.
+Deployed at **[beverage-digital-twin.streamlit.app](https://beverage-digital-twin.streamlit.app/)** from [`linchensi/TUMA206-digital-twin`](https://github.com/linchensi/TUMA206-digital-twin), branch `main`, entry point `cloud_app.py`.
+
+For local testing, run:
+
+```powershell
+python -m streamlit run cloud_app.py --server.port 8502
+```
+
+`cloud_app.py` executes the cloud page for every new Streamlit browser session and shares one asynchronous MQTT resource for the configured broker. This avoids blank subsequent sessions while preventing one MQTT background thread per viewer.
 
 Read-only MQTT-fed page using `RemoteEngineProxy`. Shows:
 
@@ -363,7 +409,7 @@ Read-only MQTT-fed page using `RemoteEngineProxy`. Shows:
 - **2 trend charts**: Tank Level (area chart + target/limit lines), Pasteurizer Temperature (line + safe band + setpoint)
 - **Recent alarms** list (last 5, red left-border cards)
 
-No START/STOP, no fault injection, no manual override — pure monitoring. Data arrives via MQTT from any running `local_backend.py`.
+No START/STOP, no fault injection, no manual override — pure monitoring. Data arrives via MQTT from the single `local_backend.py` using the same broker and topic prefix.
 
 ---
 
@@ -373,7 +419,10 @@ No START/STOP, no fault injection, no manual override — pure monitoring. Data 
 README.md
 requirements.txt
 config.py                       # All constants, setpoints, fault/alarm codes
-START_ALL.bat                   # One-click launch (backend + dashboards)
+START_ALL.bat                   # One-click distributed launch (backend + :8501 + cloud URL)
+.env.example                    # Local environment template; never commit .env
+.streamlit/secrets.toml.example # Community Cloud Secrets template
+.devcontainer/                  # Optional VS Code Dev Container configuration
 
 local_backend.py                # On-premise engine runner (M1+M2+M3 → MQTT)
 cloud_app.py                    # Streamlit Cloud entry point (cloud monitor)
@@ -428,7 +477,9 @@ All constants in `config.py`. Key values:
 | `CONVEYOR_TARGET_BUFFER` | 12 | P-ctrl setpoint |
 | `CONVEYOR_BOTTLES_PER_TICK_AT_100` | 1.5 | Discharge at 100% belt |
 | `ALARM_DEBOUNCE_TICKS` | 3 | Ticks to latch alarm |
-| `MQTT_TOPIC_PREFIX` | tuma206grp1bvg | MQTT namespace |
+| `DATA_STALE_TIMEOUT_S` | 5 s | Age before remote data is considered stale |
+| `HISTORY_WINDOW_S` | 300 s | Default trend window |
+| `MQTT_TOPIC_PREFIX` | Environment-defined (`tuma206grp1bvg` default) | MQTT namespace; use one backend per prefix |
 
 ---
 
@@ -447,7 +498,7 @@ All constants in `config.py`. Key values:
 
 > **TUMA206 Group 1**
 >
-> Chen Zibo (03822012, ICD) · Ding Yuyao (03821587, ICD) · Lin Chen-Si (03821729, ICD)
->  · Nie Zhaorui (03821814, ICD) · Zhao Xinglong (03822679, ICD) · Siew Xuan Hui (03822086, ICD)
+> Chen Zibo (03822012, ICD) · Ding Yuyao (03821587, ICD) · Lin Chen-Si (03821729, ICD) ·
+> Nie Zhaorui (03821814, ICD) · Zhao Xinglong (03822679, ICD) · Siew Xuan Hui (03822086, ICD)
 >
 > **Modern Developments in Industry · 2025/26 Semester 2** · Lecturer: Eldhose Abraham

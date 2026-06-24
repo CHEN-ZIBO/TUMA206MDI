@@ -166,6 +166,66 @@ padding:10px 22px;margin-bottom:6px;border-bottom:1px solid {BORDER};">
 
 
 # ══════════════════════════════════════════════════════════════════════
+# HELPER: basic markdown-to-HTML for Claude formatted output
+# ══════════════════════════════════════════════════════════════════════
+import re
+
+def _md_to_html(text: str) -> str:
+    """Convert common markdown patterns to HTML for display."""
+    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    # ── Tables & horizontal rules (before newline->br conversion) ────────
+    def _table_replacer(m):
+        lines = m.group(0).strip().split("\n")
+        # Filter: keep only lines that contain at least one "|"
+        pipe_lines = [ln for ln in lines if "|" in ln]
+        if len(pipe_lines) < 2:
+            return m.group(0)
+        # Find the separator line (contains --- and |)
+        sep_idx = None
+        for i, ln in enumerate(pipe_lines):
+            stripped = ln.replace("|", "").replace(" ", "")
+            if re.match(r"^[\-\:]+$", stripped):
+                sep_idx = i
+                break
+        if sep_idx is None or sep_idx == 0:
+            return m.group(0)
+        header_cells = [c.strip() for c in pipe_lines[0].split("|") if c.strip()]
+        body_lines = pipe_lines[sep_idx+1:]
+        if not header_cells or not body_lines:
+            return m.group(0)
+        th_style = f"border:1px solid {BORDER};padding:4px 8px;text-align:left;background:#1c2128;"
+        td_style = f"border:1px solid {BORDER};padding:4px 8px;"
+        html = '<table style="border-collapse:collapse;width:100%;margin:6px 0;">'
+        html += "<tr>" + "".join(f"<th style='{th_style}'>{c}</th>" for c in header_cells) + "</tr>"
+        for ln in body_lines:
+            cells = [c.strip() for c in ln.split("|") if c.strip()]
+            if cells:
+                html += "<tr>" + "".join(f"<td style='{td_style}'>{c}</td>" for c in cells) + "</tr>"
+        html += "</table>"
+        return html
+
+    # Match table blocks: any multi-line block containing "|" with a separator row
+    text = re.sub(r"(?:^.*\|.*\n?)+", _table_replacer, text, flags=re.MULTILINE)
+
+    # Horizontal rules: standalone ---, ***, or ___ on a line
+    text = re.sub(r"^(?:\-{3,}|\*{3,}|_{3,})\s*$",
+                  f'<hr style="border:none;border-top:1px solid {BORDER};margin:8px 0;">',
+                  text, flags=re.MULTILINE)
+
+    # ── Inline formatting ───────────────────────────────────────────────
+    text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
+    text = re.sub(r"__(.+?)__", r"<b>\1</b>", text)
+    text = re.sub(r"\*(.+?)\*", r"<i>\1</i>", text)
+    text = re.sub(r"`(.+?)`", r'<code style="background:#1c2128;padding:1px 5px;border-radius:3px;">\1</code>', text)
+    text = re.sub(r"^### (.+)$", r"<b style='font-size:1rem;'>\1</b>", text, flags=re.MULTILINE)
+    text = re.sub(r"^## (.+)$", r"<b style='font-size:1.1rem;'>\1</b>", text, flags=re.MULTILINE)
+    text = re.sub(r"^# (.+)$", r"<b style='font-size:1.2rem;'>\1</b>", text, flags=re.MULTILINE)
+    text = re.sub(r"^[\-\*] (.+)$", r"&bull; \1", text, flags=re.MULTILINE)
+    text = text.replace("\n", "<br>")
+    return text
+
+# ══════════════════════════════════════════════════════════════════════
 # HELPER: send a question to AI and append to chat
 # ══════════════════════════════════════════════════════════════════════
 def _ask(display_label: str, ai_prompt: str, latest: dict, history: list) -> None:
@@ -241,7 +301,7 @@ def alarms_view():
                 <span style="font-size:0.62rem;color:{TEXT_DIM};">via {result.get('engine','')}</span>
             </div>
             <div style="color:{TEXT};line-height:1.65;font-size:0.87rem;">
-                {result.get('recommendation_text','')}
+                {_md_to_html(result.get('recommendation_text',''))}
             </div>
         </div>""", unsafe_allow_html=True)
 
@@ -266,7 +326,7 @@ def alarms_view():
                 <span style="font-size:0.95rem;font-weight:700;color:{ACCENT};">System Health Check</span>
                 <span style="font-size:0.62rem;color:{TEXT_DIM};">on demand</span>
             </div>
-            <div style="color:{TEXT};line-height:1.65;font-size:0.87rem;">{health.replace(chr(10), '<br>')}</div>
+            <div style="color:{TEXT};line-height:1.65;font-size:0.87rem;">{_md_to_html(health)}</div>
         </div>""", unsafe_allow_html=True)
     else:
         st.markdown(
@@ -347,7 +407,7 @@ if chat:
         if msg["role"] == "user":
             chat_html += f'<div class="chat-user"><b style="color:{ACCENT};">Operator</b><br>{msg["content"]}</div>'
         else:
-            content = msg["content"].replace("\n", "<br>")
+            content = _md_to_html(msg["content"])
             chat_html += f'<div class="chat-ai"><b style="color:{GREEN};">AI Assistant</b><br>{content}</div>'
     st.markdown(
         f'<div style="max-height:360px;overflow-y:auto;padding:2px 0;">{chat_html}</div>',

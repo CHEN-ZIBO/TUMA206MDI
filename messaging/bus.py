@@ -83,7 +83,12 @@ class InProcessBus(MessageBus):
 class MqttBus(MessageBus):
     """MQTT backend using paho-mqtt. Requires a running broker."""
 
-    def __init__(self, host: str = config.MQTT_HOST, port: int = config.MQTT_PORT) -> None:
+    def __init__(
+        self,
+        host: str = config.MQTT_HOST,
+        port: int = config.MQTT_PORT,
+        async_connect: bool = False,
+    ) -> None:
         try:
             import paho.mqtt.client as mqtt  # noqa: WPS433 (lazy import)
         except ImportError as exc:  # pragma: no cover
@@ -112,7 +117,12 @@ class MqttBus(MessageBus):
 
         self._client.on_message = self._on_message
         self._client.on_connect = self._on_connect
-        self._client.connect(host, port, keepalive=30)
+        # Remote dashboards must render even while the broker is unavailable.
+        # Paho reconnects in its network thread without blocking Streamlit.
+        if async_connect:
+            self._client.connect_async(host, port, keepalive=30)
+        else:
+            self._client.connect(host, port, keepalive=30)
         self._client.loop_start()
 
     def _on_connect(self, *args) -> None:  # noqa: D401 - paho v1/v2 differ in args
@@ -178,7 +188,7 @@ class MqttBus(MessageBus):
         self._client.disconnect()
 
 
-def create_bus(use_mqtt: bool = False) -> MessageBus:
+def create_bus(use_mqtt: bool = False, async_connect: bool = False) -> MessageBus:
     """Factory: return an MQTT bus if requested and reachable, else in-process.
 
     Falling back to the in-process bus keeps the demo running even if no broker
@@ -186,7 +196,7 @@ def create_bus(use_mqtt: bool = False) -> MessageBus:
     """
     if use_mqtt:
         try:
-            return MqttBus()
+            return MqttBus(async_connect=async_connect)
         except Exception as exc:  # noqa: BLE001 - any connection failure -> fallback
             print(f"[MessageBus] MQTT unavailable ({exc}); using in-process bus.")
     return InProcessBus()

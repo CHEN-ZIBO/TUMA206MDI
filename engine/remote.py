@@ -39,7 +39,7 @@ class RemoteEngineProxy:
         # to MQTT. If the broker is unreachable, create_bus() falls back to an
         # in-process bus (the dashboard will simply show no data until a backend
         # publishes on the same process — useful for local testing).
-        self.bus = create_bus(use_mqtt=use_mqtt)
+        self.bus = create_bus(use_mqtt=use_mqtt, async_connect=True)
 
         # Separate DB file so a local backend on the same machine (which writes
         # the canonical historian.db) and this dashboard-side mirror never clash.
